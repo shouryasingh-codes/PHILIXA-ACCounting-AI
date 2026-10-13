@@ -1,0 +1,6 @@
+# Local fast path: preserve the existing application image and add only document parsers.
+# Clean deployments continue to use the main Dockerfile, which includes these requirements.
+ARG BASE_IMAGE=accounts-dev-app
+FROM ${BASE_IMAGE}
+COPY requirements-documents.txt /app/requirements-documents.txt
+RUN pip install --no-cache-dir -r /app/requirements-documents.txt

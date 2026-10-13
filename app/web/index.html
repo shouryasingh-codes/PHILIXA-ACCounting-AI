@@ -1,0 +1,2193 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-KDCRFMQP1D"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-KDCRFMQP1D');
+  </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Philixa business assistant — stock, hisab, reminders aur entries in one simple conversation." />
+  <!-- Vapi Feature Flag: Set content="vapi" to use Vapi SDK, or "legacy_live" to use old WebSocket system -->
+  <meta name="voice-gateway-provider" content="legacy_live" />
+  <title>Philixa — Business Assistant</title>
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f766e'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='16' font-weight='900' fill='%23ffffff' text-anchor='middle'%3EP6%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.16" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    /* =====================================================================
+       MFD MODE — Dark teal premium design
+       Matching philixa-redesign (4).html exactly
+       ===================================================================== */
+    :root {
+      /* LIGHT THEME (Default) */
+      --mfd-bg: #f8fafc;
+      --mfd-panel: #ffffff;
+      --mfd-panel2: #f1f5f9;
+      --mfd-line: #e2e8f0;
+      --mfd-teal: #0f766e;
+      --mfd-teal-soft: rgba(15, 118, 110, 0.12);
+      --mfd-teal-glow: rgba(15, 118, 110, 0.25);
+      --mfd-amber: #d97706;
+      --mfd-amber-soft: rgba(217, 119, 6, 0.12);
+      --mfd-red: #dc2626;
+      --mfd-red-soft: rgba(220, 38, 38, 0.12);
+      --mfd-txt: #0f172a;
+      --mfd-mut: #64748b;
+      --mfd-mut2: #475569;
+      --mfd-topbar-bg: rgba(255, 255, 255, 0.95);
+      --mfd-hero-grad: rgba(255, 255, 255, 0.6);
+    }
+
+    :root.dark-theme {
+      /* DARK THEME */
+      --mfd-bg: #0a0f0d;
+      --mfd-panel: #101613;
+      --mfd-panel2: #151d19;
+      --mfd-line: #1f2b26;
+      --mfd-teal: #14b8a6;
+      --mfd-teal-soft: rgba(20,184,166,.12);
+      --mfd-teal-glow: rgba(20,184,166,.45);
+      --mfd-amber: #f59e0b;
+      --mfd-amber-soft: rgba(245,158,11,.12);
+      --mfd-red: #ef4444;
+      --mfd-red-soft: rgba(239,68,68,.12);
+      --mfd-txt: #e8ecea;
+      --mfd-mut: #8fa098;
+      --mfd-mut2: #5c6b64;
+      --mfd-topbar-bg: rgba(10, 15, 13, 0.95);
+      --mfd-hero-grad: rgba(16, 22, 19, 0.6);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--mfd-bg);
+      color: var(--mfd-txt);
+      font-family: 'Inter', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+    }
+
+    button, input, select, textarea { font: inherit; }
+
+    /* ===== TOPBAR ===== */
+    .mfd-topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--mfd-line);
+      position: sticky;
+      top: 0;
+      background: var(--mfd-topbar-bg);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+    }
+    .mfd-logo {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--mfd-teal), #0d9488);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 13px; color: #04211d;
+      flex-shrink: 0; cursor: pointer;
+    }
+    .mfd-brand b { font-size: 15px; letter-spacing: .3px; color: var(--mfd-txt); }
+    .mfd-brand span { display: block; font-size: 11px; color: var(--mfd-mut); }
+    .mfd-spacer { flex: 1; }
+    .mfd-chip {
+      border: 1px solid var(--mfd-line); background: var(--mfd-panel);
+      border-radius: 999px; padding: 7px 14px; font-size: 12.5px;
+      color: var(--mfd-mut); cursor: pointer; display: flex; align-items: center; gap: 6px;
+    }
+    .mfd-chip:hover { border-color: var(--mfd-teal); color: var(--mfd-txt); }
+    .mfd-topbar-btn {
+      border: 1px solid var(--mfd-line); background: var(--mfd-panel);
+      color: var(--mfd-txt); border-radius: 10px; padding: 8px 14px;
+      font-size: 13px; cursor: pointer; font-weight: 500;
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    .mfd-topbar-btn:hover { border-color: var(--mfd-teal); }
+    .mfd-avatar-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--mfd-teal-soft); border: 1.5px solid var(--mfd-teal);
+      color: var(--mfd-teal); font-weight: 700; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      flex-shrink: 0; transition: transform .15s;
+    }
+    .mfd-avatar-btn:hover { transform: scale(1.05); }
+
+    /* Avatar dropdown — reuse original styles but scoped */
+    .avatar-dropdown-container { position: relative; display: inline-block; }
+    .avatar-menu {
+      position: absolute; top: calc(100% + 8px); right: 0; width: 220px;
+      background: var(--mfd-panel); border: 1px solid var(--mfd-line);
+      border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,.4); z-index: 1000;
+      overflow: hidden; animation: mfd-slideUp .2s ease-out;
+    }
+    .avatar-menu.hidden { display: none; }
+    @keyframes mfd-slideUp { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform:none; } }
+    .avatar-menu-header { padding: 12px 16px; border-bottom: 1px solid var(--mfd-line); }
+    .avatar-menu-header .user-name-text { font-weight: 600; font-size: 13px; color: var(--mfd-txt); display: block; }
+    .avatar-menu-header .user-email-text { font-size: 12px; color: var(--mfd-mut); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; margin: 0; }
+    .avatar-menu-body { padding: 8px 0; }
+    .avatar-menu-item {
+      width: 100%; text-align: left; background: none; border: none;
+      padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--mfd-txt);
+      cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background .15s;
+    }
+    .avatar-menu-item:hover { background: rgba(255,255,255,.04); }
+    .avatar-menu-item .icon { font-size: 14px; }
+    .avatar-menu-divider { height: 1px; background: var(--mfd-line); margin: 6px 0; }
+    .avatar-menu-item.logout-item { color: #fca5a5; }
+    .avatar-menu-item.logout-item:hover { background: rgba(239,68,68,.1); }
+
+    /* Workspace selector inside topbar */
+    .mfd-ws-select {
+      border: none; background: transparent; font-size: 12.5px;
+      color: var(--mfd-mut); cursor: pointer; outline: none; padding: 0;
+      font-family: inherit; max-width: 180px;
+    }
+    .mfd-ws-select option { background: #151d19; color: var(--mfd-txt); }
+
+    /* Plan badge */
+    .mfd-plan-badge {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+      padding: 2px 8px; border-radius: 999px;
+      background: var(--mfd-teal-soft); color: var(--mfd-teal); border: 1px solid rgba(20,184,166,.3);
+    }
+
+    /* ===== 3-COLUMN LAYOUT ===== */
+    .mfd-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 0;
+      min-height: 100vh;
+      transition: grid-template-columns 0.3s ease;
+    }
+    .mfd-layout.sidebar-collapsed {
+      grid-template-columns: 64px 1fr;
+    }
+    .mfd-layout.sidebar-collapsed .mfd-sidebar {
+      padding: 16px 8px;
+      align-items: center;
+      overflow-x: hidden;
+    }
+    .mfd-layout.sidebar-collapsed .mfd-brand,
+    .mfd-layout.sidebar-collapsed .mfd-header-spacer,
+    .mfd-layout.sidebar-collapsed .mfd-client-btn,
+    .mfd-layout.sidebar-collapsed .mfd-ws-row select,
+    .mfd-layout.sidebar-collapsed .mfd-nav-label,
+    .mfd-layout.sidebar-collapsed .mfd-sidebar-foot {
+      display: none !important;
+    }
+    .mfd-layout.sidebar-collapsed .mfd-sidebar-header {
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .mfd-layout.sidebar-collapsed .mfd-client-row,
+    .mfd-layout.sidebar-collapsed .mfd-ws-row {
+      justify-content: center;
+      padding: 8px 0;
+      border: none;
+      background: transparent;
+    }
+    .mfd-layout.sidebar-collapsed .mfd-nav {
+      justify-content: center;
+      padding: 10px;
+    }
+
+    /* ===== SIDEBAR ===== */
+    .mfd-sidebar {
+      border-right: 1px solid var(--mfd-line);
+      background: var(--mfd-panel);
+      padding: 16px 12px;
+      display: flex; flex-direction: column; gap: 4px;
+      position: sticky; top: 0; height: 100vh;
+      overflow-y: auto;
+    }
+    .mfd-sidebar-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 24px; padding: 4px;
+    }
+    .mfd-sidebar-header .mfd-icon-btn {
+      border: none; background: transparent; font-size: 20px; width: 32px; height: 32px;
+    }
+    .mfd-sidebar-header .mfd-icon-btn:hover { background: rgba(100,100,100,0.1); border-color: transparent; }
+    .mfd-main-col { display: flex; flex-direction: column; min-width: 0; }
+
+    .mfd-sidebar::-webkit-scrollbar { width: 4px; }
+    .mfd-sidebar::-webkit-scrollbar-thumb { background: var(--mfd-line); border-radius: 4px; }
+
+    /* Client row */
+    .mfd-client-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .mfd-client-btn {
+      flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px;
+      border: 1px solid var(--mfd-line); background: var(--mfd-panel);
+      border-radius: 10px; padding: 9px 10px; font-size: 12px; color: var(--mfd-txt);
+      cursor: pointer; font-family: inherit; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; text-align: left;
+    }
+    .mfd-client-btn:hover { border-color: var(--mfd-teal); }
+    .mfd-client-btn .cv { margin-left: auto; color: var(--mfd-mut2); font-size: 10px; flex-shrink: 0; }
+    .mfd-icon-btn {
+      width: 35px; height: 35px; flex-shrink: 0;
+      border: 1px solid var(--mfd-line); background: var(--mfd-panel);
+      border-radius: 9px; cursor: pointer; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--mfd-txt); font-family: inherit; transition: border-color .15s;
+    }
+    .mfd-icon-btn:hover { border-color: var(--mfd-teal); }
+    .mfd-icon-btn.danger { background: var(--mfd-red-soft); border-color: rgba(239,68,68,.35); color: #fca5a5; }
+    .mfd-icon-btn.danger:hover { border-color: var(--mfd-red); }
+
+    /* Workspace & scope selects */
+    .mfd-ws-row {
+      display: flex; align-items: center; gap: 6px;
+      border: 1px solid var(--mfd-line); background: var(--mfd-panel);
+      border-radius: 10px; padding: 9px 10px; margin-bottom: 6px; cursor: pointer;
+    }
+    .mfd-ws-row:hover { border-color: var(--mfd-teal); }
+    .mfd-ws-row select {
+      border: none; background: transparent; font-size: 12px; color: var(--mfd-txt);
+      cursor: pointer; outline: none; padding: 0; font-family: inherit; width: 100%;
+      color-scheme: dark;
+    }
+    .mfd-ws-row select option { background: #151d19; color: var(--mfd-txt); }
+
+    .mfd-divider { height: 1px; background: var(--mfd-line); margin: 8px 2px; }
+
+    .mfd-nav {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 10px; color: var(--mfd-mut);
+      cursor: pointer; font-weight: 500; font-size: 13px; text-decoration: none;
+      transition: all .15s;
+    }
+    .mfd-nav:hover { background: var(--mfd-panel); color: var(--mfd-txt); }
+
+    .mfd-sidebar-foot {
+      margin-top: auto; padding: 12px;
+      border-top: 1px solid var(--mfd-line); font-size: 12px; color: var(--mfd-mut2);
+      line-height: 1.6;
+    }
+
+    /* ===== MAIN CONTENT ===== */
+    .mfd-main {
+      padding: 24px 26px;
+      overflow-y: auto;
+    }
+
+    /* Loading state */
+    #mfdContentLoader {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 60vh;
+    }
+    #mfdContentLoader .mfd-loader-icon {
+      width: 48px; height: 48px; border-radius: 12px;
+      background: var(--mfd-teal); color: #04211d;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 18px; margin-bottom: 16px;
+      animation: mfd-pulse 1.5s infinite;
+    }
+    @keyframes mfd-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: .8; } }
+    #mfdContentLoader p { color: var(--mfd-mut); font-size: 14px; font-weight: 600; letter-spacing: .5px; }
+
+    /* ===== DASHBOARD (shown after login) ===== */
+    #mfdDashboard { display: none; }
+
+    /* Greeting */
+    .mfd-greet { margin-bottom: 18px; }
+    .mfd-greet h2 { font-size: 22px; font-weight: 700; margin: 0; color: var(--mfd-txt); }
+    .mfd-greet p { color: var(--mfd-mut); margin-top: 5px; font-size: 13.5px; margin-bottom: 0; }
+    .mfd-greet b { color: var(--mfd-teal); }
+
+    /* KPIs */
+    .mfd-kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 18px; }
+    .mfd-kpi {
+      background: var(--mfd-panel); border: 1px solid var(--mfd-line);
+      border-radius: 14px; padding: 14px 16px; cursor: pointer; transition: all .2s;
+    }
+    .mfd-kpi:hover { border-color: rgba(20,184,166,.4); box-shadow: 0 0 18px rgba(20,184,166,.08); }
+    .mfd-kpi small { color: var(--mfd-mut); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+    .mfd-kpi .kv { font-size: 24px; font-weight: 800; margin-top: 4px; color: var(--mfd-txt); display: flex; align-items: center; gap: 8px; }
+    .mfd-kpi .kv .ok { font-size: 11px; color: #34d399; background: rgba(52,211,153,.1); padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+
+    /* Hero voice */
+    .mfd-hero {
+      background: radial-gradient(120% 140% at 50% 0%, rgba(20,184,166,.16), var(--mfd-hero-grad) 60%), var(--mfd-panel);
+      border: 1px solid rgba(20,184,166,.35);
+      border-radius: 20px; padding: 34px 20px 28px;
+      text-align: center; position: relative; overflow: hidden; margin-bottom: 18px;
+    }
+    .mfd-halo {
+      width: 132px; height: 132px; border-radius: 50%;
+      background: conic-gradient(from 0deg, rgba(20,184,166,.5), transparent 40%, rgba(20,184,166,.5));
+      filter: blur(26px); position: absolute; left: 50%; top: 24px;
+      transform: translateX(-50%); animation: mfd-spin 6s linear infinite; opacity: .55;
+      pointer-events: none;
+    }
+    @keyframes mfd-spin { to { transform: translateX(-50%) rotate(360deg); } }
+    .mfd-mic {
+      width: 96px; height: 96px; border-radius: 50%;
+      background: linear-gradient(135deg, #1dd4bf, #0d9488);
+      border: none; cursor: pointer; position: relative;
+      display: flex; align-items: center; justify-content: center; margin: 0 auto;
+      box-shadow: 0 0 0 10px rgba(20,184,166,.12), 0 0 44px var(--mfd-teal-glow);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .mfd-mic:hover { transform: scale(1.06); box-shadow: 0 0 0 14px rgba(20,184,166,.15), 0 0 56px rgba(20,184,166,.5); }
+    .mfd-mic:active { transform: scale(.97); }
+    .mfd-mic svg { width: 40px; height: 40px; fill: #04211d; }
+    .mfd-mic.recording { animation: mfd-mic-pulse 1s infinite; }
+    @keyframes mfd-mic-pulse { 0%,100% { box-shadow: 0 0 0 10px rgba(20,184,166,.12), 0 0 44px var(--mfd-teal-glow); } 50% { box-shadow: 0 0 0 18px rgba(20,184,166,.2), 0 0 60px rgba(20,184,166,.6); } }
+    .mfd-hero h3 { margin-top: 18px; font-size: 17px; color: var(--mfd-txt); }
+    .mfd-hero p { color: var(--mfd-mut); font-size: 13px; margin-top: 6px; }
+    .mfd-live-status { margin-top: 10px; font-size: 13px; color: var(--mfd-teal); font-weight: 600; display: none; }
+    .mfd-stop-btn {
+      display: none; margin-top: 12px; border: 1px solid var(--mfd-line);
+      background: var(--mfd-panel2); color: var(--mfd-txt); border-radius: 10px;
+      padding: 8px 18px; font-size: 13px; cursor: pointer; font-family: inherit;
+    }
+    .mfd-stop-btn:hover { border-color: var(--mfd-teal); }
+
+    /* 2-column cards */
+    .mfd-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+    .mfd-card {
+      background: var(--mfd-panel); border: 1px solid var(--mfd-line);
+      border-radius: 16px; padding: 18px;
+    }
+    .mfd-card h4 { font-size: 14.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px; color: var(--mfd-txt); }
+    .mfd-card .mfd-sub { color: var(--mfd-mut); font-size: 12px; margin-top: 4px; }
+
+    /* Tabs (intake) */
+    .mfd-tabs-header {
+      display: flex; gap: 4px;
+      background: var(--mfd-panel2); border: 1px solid var(--mfd-line);
+      border-radius: 10px; padding: 4px; margin-top: 12px;
+    }
+    .mfd-tab-btn {
+      flex: 1; text-align: center; padding: 8px 10px; border-radius: 8px;
+      font-size: 12px; color: var(--mfd-mut); cursor: pointer; font-weight: 500;
+      border: none; background: transparent; font-family: inherit; transition: all .15s;
+    }
+    .mfd-tab-btn.active { background: var(--mfd-teal-soft); color: var(--mfd-teal); font-weight: 600; }
+    .mfd-tab-btn:hover:not(.active) { color: var(--mfd-txt); }
+
+    /* Textarea */
+    .mfd-card textarea {
+      width: 100%; margin-top: 12px;
+      background: var(--mfd-panel2); border: 1px solid var(--mfd-line);
+      border-radius: 12px; color: var(--mfd-txt); padding: 13px;
+      font-family: inherit; font-size: 13.5px; resize: vertical; min-height: 96px; outline: none;
+    }
+    .mfd-card textarea:focus { border-color: var(--mfd-teal); box-shadow: 0 0 0 3px rgba(20,184,166,.12); }
+    .mfd-card textarea::placeholder { color: var(--mfd-mut2); }
+
+    /* Form row */
+    .mfd-form-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .mfd-date-input {
+      background: var(--mfd-panel2); border: 1px solid var(--mfd-line);
+      border-radius: 10px; color: var(--mfd-txt); padding: 9px 12px;
+      font-family: inherit; font-size: 13px; outline: none; color-scheme: dark;
+    }
+    .mfd-date-input:focus { border-color: var(--mfd-teal); }
+    .mfd-process-btn {
+      margin-left: auto;
+      background: linear-gradient(135deg, #1dd4bf, #0d9488);
+      border: none; color: #04211d; font-weight: 700; border-radius: 10px;
+      padding: 11px 18px; font-size: 13.5px; cursor: pointer;
+      font-family: inherit; display: flex; align-items: center; gap: 7px;
+      transition: filter .15s;
+    }
+    .mfd-process-btn:hover { filter: brightness(1.08); }
+    .mfd-process-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+    /* Upload area */
+    .mfd-upload-area {
+      margin-top: 12px; border: 1.5px dashed var(--mfd-line); border-radius: 12px;
+      padding: 24px 16px; text-align: center; cursor: pointer; transition: border-color .15s;
+      background: var(--mfd-panel2);
+    }
+    .mfd-upload-area:hover { border-color: var(--mfd-teal); }
+    .mfd-upload-area input[type="file"] { display: none; }
+
+    /* Live record area */
+    .mfd-live-area {
+      margin-top: 12px; border: 1px solid var(--mfd-line); border-radius: 12px;
+      padding: 20px 16px; text-align: center; background: var(--mfd-panel2);
+    }
+    .mfd-live-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .mfd-live-btn {
+      padding: 9px 18px; border-radius: 8px; font-weight: 700; font-size: 13px;
+      cursor: pointer; border: none; font-family: inherit; display: flex; align-items: center; gap: 6px;
+    }
+    .mfd-live-btn.solo { background: var(--mfd-teal); color: #04211d; }
+    .mfd-live-btn.meeting { background: #7c3aed; color: #fff; }
+    .mfd-live-btn.stop { background: var(--mfd-panel); color: var(--mfd-mut); border: 1px solid var(--mfd-line); }
+    .mfd-live-btn.stop:hover { border-color: var(--mfd-teal); }
+
+    /* Review section */
+    .mfd-rv-head { display: flex; align-items: center; gap: 8px; }
+    .mfd-badge {
+      font-size: 10.5px; background: var(--mfd-teal-soft); color: var(--mfd-teal);
+      padding: 3px 8px; border-radius: 999px; font-weight: 600;
+    }
+    .mfd-filter-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .mfd-fchip {
+      border: 1px solid var(--mfd-line); background: var(--mfd-panel2);
+      color: var(--mfd-mut); border-radius: 999px; padding: 6px 12px;
+      font-size: 12px; cursor: pointer; font-weight: 500; font-family: inherit;
+      transition: all .15s;
+    }
+    .mfd-fchip:hover { color: var(--mfd-txt); }
+    .mfd-fchip.active { background: var(--mfd-teal-soft); border-color: var(--mfd-teal); color: var(--mfd-teal); font-weight: 600; }
+
+    /* Diff stream */
+    .mfd-diff-stream {
+      display: flex; flex-direction: column; gap: 10px;
+      max-height: 360px; overflow-y: auto; margin-top: 12px; padding-right: 4px;
+    }
+    .mfd-diff-stream::-webkit-scrollbar { width: 5px; }
+    .mfd-diff-stream::-webkit-scrollbar-thumb { background: var(--mfd-line); border-radius: 4px; }
+
+    .mfd-diff-card {
+      background: var(--mfd-panel2); border: 1px solid var(--mfd-line);
+      border-radius: 12px; padding: 12px 14px; cursor: pointer;
+      display: flex; gap: 12px; align-items: flex-start; transition: all .15s; outline: none;
+    }
+    .mfd-diff-card:hover { border-color: rgba(20,184,166,.4); }
+    .mfd-diff-card.selected { background: rgba(20,184,166,.08); border-color: var(--mfd-teal); }
+    .mfd-diff-check {
+      width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--mfd-line);
+      background: var(--mfd-panel); display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 2px; transition: all .15s;
+    }
+    .mfd-diff-card.selected .mfd-diff-check { background: var(--mfd-teal); border-color: var(--mfd-teal); color: #04211d; font-size: 11px; font-weight: 700; }
+    .mfd-diff-body { flex: 1; min-width: 0; }
+    .mfd-diff-tag { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
+    .mfd-diff-tag.commitment { color: var(--mfd-teal); }
+    .mfd-diff-tag.risk { color: var(--mfd-amber); }
+    .mfd-diff-tag.memory { color: #a78bfa; }
+    .mfd-diff-title { font-size: 13px; font-weight: 600; color: var(--mfd-txt); margin-top: 4px; line-height: 1.45; }
+    .mfd-diff-meta { font-size: 11.5px; color: var(--mfd-mut); margin-top: 5px; }
+
+    .mfd-gate-note {
+      margin-top: 12px; font-size: 11.5px; color: var(--mfd-mut2); text-align: center;
+      border-top: 1px dashed var(--mfd-line); padding-top: 10px;
+    }
+    .mfd-gate-note b { color: var(--mfd-teal); }
+
+    /* Diff action bar */
+    .mfd-diff-footer {
+      display: flex; gap: 10px; margin-top: 12px; justify-content: flex-end;
+    }
+    .mfd-discard-btn {
+      border: 1px solid var(--mfd-line); background: transparent; color: var(--mfd-mut);
+      border-radius: 8px; padding: 9px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+    }
+    .mfd-discard-btn:hover { border-color: var(--mfd-red); color: #fca5a5; }
+    .mfd-sync-btn {
+      background: linear-gradient(135deg, #1dd4bf, #0d9488); border: none;
+      color: #04211d; font-weight: 700; border-radius: 8px;
+      padding: 9px 16px; font-size: 13px; cursor: pointer; font-family: inherit;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .mfd-sync-btn:hover { filter: brightness(1.08); }
+
+    /* Today's Work / Tasks */
+    .mfd-task {
+      display: flex; align-items: center; gap: 14px;
+      background: linear-gradient(90deg, var(--mfd-amber-soft), transparent), var(--mfd-panel2);
+      border: 1px solid rgba(245,158,11,.35); border-radius: 14px;
+      padding: 14px 16px; margin-top: 12px;
+    }
+    .mfd-task .t-title { font-weight: 600; font-size: 13.5px; color: var(--mfd-txt); }
+    .mfd-task .t-sub { font-size: 12px; color: var(--mfd-mut); margin-top: 3px; }
+    .mfd-due {
+      font-size: 10.5px; background: var(--mfd-amber-soft); color: var(--mfd-amber);
+      border: 1px solid rgba(245,158,11,.4); padding: 2px 8px; border-radius: 999px;
+      font-weight: 600; margin-left: auto; white-space: nowrap;
+    }
+
+    /* Memory section tabs */
+    .mfd-mem-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+    .mfd-mem-tab {
+      padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+      color: var(--mfd-mut); cursor: pointer; border: none; background: transparent;
+      font-family: inherit; transition: all .15s;
+    }
+    .mfd-mem-tab.active { background: var(--mfd-teal-soft); color: var(--mfd-teal); font-weight: 600; }
+    .mfd-mem-tab:hover:not(.active) { color: var(--mfd-txt); }
+
+    .mfd-mem-card { background: var(--mfd-panel); border: 1px solid var(--mfd-line); border-radius: 16px; padding: 18px; }
+    .mfd-mem-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .mfd-mem-toggle {
+      background: none; border: none; color: var(--mfd-txt); font-family: inherit;
+      font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+      cursor: pointer; padding: 0; flex: 1;
+    }
+    .mfd-mem-toggle:hover { color: var(--mfd-teal); }
+    .mfd-mem-toggle .cv { color: var(--mfd-mut2); font-size: 10px; }
+    .mfd-load-mem-btn {
+      border: 1px solid var(--mfd-line); background: var(--mfd-panel2); color: var(--mfd-txt);
+      border-radius: 8px; padding: 7px 14px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+    }
+    .mfd-load-mem-btn:hover { border-color: var(--mfd-teal); }
+
+    .mfd-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .mfd-fact { background: var(--mfd-panel2); border: 1px solid var(--mfd-line); border-radius: 12px; padding: 11px 13px; }
+    .mfd-fact small { color: var(--mfd-mut2); font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; display: block; }
+    .mfd-fact div { font-size: 12.5px; margin-top: 4px; line-height: 1.4; color: var(--mfd-txt); }
+    .mfd-ai-suggest {
+      margin-top: 10px; border: 1px dashed rgba(20,184,166,.45); background: var(--mfd-teal-soft);
+      border-radius: 12px; padding: 11px 13px; font-size: 12.5px; color: var(--mfd-txt);
+    }
+    .mfd-ai-suggest b { color: var(--mfd-teal); }
+
+    /* Ask client */
+    .mfd-ask-row {
+      display: flex; gap: 8px; margin-top: 14px;
+      background: var(--mfd-panel2); border: 1px solid var(--mfd-line);
+      border-radius: 12px; padding: 8px;
+    }
+    .mfd-ask-row input {
+      flex: 1; border: none; background: transparent; color: var(--mfd-txt);
+      font-size: 13px; outline: none; padding: 4px 8px; font-family: inherit;
+    }
+    .mfd-ask-row input::placeholder { color: var(--mfd-mut2); }
+    .mfd-ask-send {
+      border: none; background: var(--mfd-teal); color: #04211d; border-radius: 8px;
+      padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+    }
+    .mfd-ask-send:hover { filter: brightness(1.08); }
+    #askClientResult { margin-top: 10px; font-size: 13px; line-height: 1.5; color: var(--mfd-txt); }
+    #askClientResult.hidden { display: none; }
+
+    /* Commitments tab */
+    .mfd-commit-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+    .mfd-commit-table th { text-align: left; padding: 10px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--mfd-mut2); border-bottom: 1px solid var(--mfd-line); }
+    .mfd-commit-table td { padding: 12px 8px; border-bottom: 1px solid rgba(31,43,38,.7); vertical-align: middle; color: var(--mfd-txt); }
+    .mfd-commit-status { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+    .mfd-commit-status.pending { background: var(--mfd-amber-soft); color: var(--mfd-amber); border: 1px solid rgba(245,158,11,.3); }
+    .mfd-commit-status.completed { background: rgba(52,211,153,.1); color: #34d399; border: 1px solid rgba(52,211,153,.3); }
+
+    /* Team performance */
+    .mfd-team-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+    .mfd-team-table tr td:first-child { padding: 12px 8px; }
+    .mfd-team-table td { padding: 12px 8px; border-top: 1px solid var(--mfd-line); color: var(--mfd-txt); }
+    .mfd-team-table th { text-align: left; padding: 10px 8px; font-size: 11px; color: var(--mfd-mut2); text-transform: uppercase; letter-spacing: .5px; }
+
+    /* Upload / audio status */
+    .mfd-audio-status {
+      margin-top: 14px; background: var(--mfd-panel2); border: 1px solid var(--mfd-line);
+      border-radius: 10px; padding: 12px 14px;
+    }
+    .mfd-audio-status.hidden { display: none; }
+
+    /* ===== RIGHT RAIL — Philixa Coach ===== */
+    .mfd-right-rail {
+      border-left: 1px solid var(--mfd-line);
+      padding: 18px 14px;
+      overflow-y: auto;
+    }
+    .mfd-right-rail::-webkit-scrollbar { width: 4px; }
+    .mfd-right-rail::-webkit-scrollbar-thumb { background: var(--mfd-line); border-radius: 4px; }
+    .mfd-coach-title { color: var(--mfd-mut); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; font-weight: 600; }
+    .mfd-right-rail .mfd-fact { margin-bottom: 10px; }
+    .mfd-copilot-placeholder {
+      margin-top: 14px; border: 1px dashed var(--mfd-line); border-radius: 12px;
+      padding: 12px; font-size: 12px; color: var(--mfd-mut2); text-align: center;
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--mfd-teal); color: #04211d; padding: 12px 24px;
+      border-radius: 12px; font-size: 13px; font-weight: 700;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 9999;
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; }
+    #toast.error { background: var(--mfd-red); color: #fff; }
+
+    /* Modals */
+    .modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 2001;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal.hidden { display: none; }
+    .modal-content {
+      background: var(--mfd-panel); border: 1px solid var(--mfd-line);
+      border-radius: 18px; width: 100%; max-width: 520px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.5); overflow: hidden;
+      animation: mfd-slideUp .25s ease-out;
+    }
+    .members-modal-content { max-width: 680px; }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; border-bottom: 1px solid var(--mfd-line);
+    }
+    .modal-header h3 { margin: 0; font-size: 17px; font-weight: 700; color: var(--mfd-txt); }
+    .close-btn {
+      background: transparent; border: none; color: var(--mfd-mut); font-size: 22px;
+      cursor: pointer; padding: 4px 8px; border-radius: 6px; line-height: 1;
+    }
+    .close-btn:hover { color: var(--mfd-txt); background: rgba(255,255,255,.05); }
+    .modal-body { padding: 24px; }
+    .modal-body input, .modal-body select, .modal-body textarea {
+      background: var(--mfd-panel2); border: 1px solid var(--mfd-line);
+      color: var(--mfd-txt); border-radius: 10px; padding: 10px 12px; width: 100%;
+      font-family: inherit; font-size: 13px; outline: none;
+    }
+    .modal-body input:focus, .modal-body select:focus { border-color: var(--mfd-teal); }
+    .modal-body label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--mfd-mut); display: block; margin-bottom: 6px; }
+    .form-group { margin-bottom: 16px; }
+    .form-row { margin-bottom: 16px; }
+
+    .primary-action {
+      background: linear-gradient(135deg, #1dd4bf, #0d9488); border: none;
+      color: #04211d; font-weight: 700; border-radius: 10px; padding: 10px 18px;
+      font-size: 13.5px; cursor: pointer; font-family: inherit;
+      display: inline-flex; align-items: center; gap: 6px; transition: filter .15s;
+    }
+    .primary-action:hover { filter: brightness(1.08); }
+    .primary-action:disabled { opacity: .55; cursor: not-allowed; }
+    .secondary-action {
+      background: var(--mfd-panel2); color: var(--mfd-txt); border: 1px solid var(--mfd-line);
+      font-weight: 600; border-radius: 10px; padding: 8px 14px; cursor: pointer;
+      font-family: inherit; display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
+    }
+    .secondary-action:hover { border-color: var(--mfd-teal); }
+    .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--mfd-line); background: var(--mfd-panel2); color: var(--mfd-txt); border-radius: 10px; padding: 8px 14px; cursor: pointer; font-family: inherit; font-size: 13px; }
+    .btn:hover { border-color: var(--mfd-teal); }
+
+    .alert-box { padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .alert-box.hidden { display: none !important; }
+    .alert-box.error { background: rgba(239,68,68,.12); color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
+    .alert-box.success { background: rgba(52,211,153,.1); color: #34d399; border: 1px solid rgba(52,211,153,.3); }
+
+    .members-table { width: 100%; border-collapse: collapse; }
+    .members-table th { text-align: left; padding: 10px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--mfd-mut2); border-bottom: 1px solid var(--mfd-line); }
+    .members-table td { padding: 11px 8px; font-size: 13px; border-bottom: 1px solid rgba(31,43,38,.6); color: var(--mfd-txt); }
+    .table-wrap { overflow-x: auto; }
+    .invite-box { background: var(--mfd-panel2); border: 1px solid var(--mfd-line); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+    .invite-form-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; align-items: end; }
+    .member-role-select { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--mfd-line); background: var(--mfd-panel); color: var(--mfd-txt); font-family: inherit; }
+    .btn-remove-member { background: transparent; border: 1px solid var(--mfd-line); color: #fca5a5; padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+    .badge { font-size: 10.5px; background: var(--mfd-teal-soft); color: var(--mfd-teal); padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+    .eyebrow { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mfd-mut); }
+    .role-badge { display: inline-flex; align-items: center; padding: 3px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; border-radius: 6px; }
+    .role-owner { background: rgba(20,184,166,.15); color: var(--mfd-teal); }
+    .role-admin { background: rgba(139,92,246,.15); color: #c4b5fd; }
+    .role-member { background: rgba(255,255,255,.06); color: var(--mfd-mut); }
+    .scope-selector-wrap { display: flex; align-items: center; gap: 6px; }
+    #scopeSelectorWrap { display: none; }
+
+    /* Auth overlay */
+    body:has(.auth-overlay:not(.hidden)) { overflow: hidden; }
+    .auth-overlay {
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #020617, #064e3b);
+      display: flex; z-index: 2000; overflow: hidden;
+    }
+    .auth-overlay::before {
+      content: ""; position: absolute; inset: 0;
+      background: radial-gradient(circle at top right, rgba(20,184,166,0.15) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .auth-overlay.hidden { display: none; }
+    .auth-split-container { display: flex; width: 100%; height: 100%; position: relative; z-index: 1; }
+    .auth-left-panel {
+      flex: 0 0 50%; background: transparent; position: relative;
+      padding: 60px; display: flex; flex-direction: column; justify-content: center;
+    }
+    .auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+    .brand-mark-large {
+      width: 48px; height: 48px; background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+      color: white; border-radius: 10px; display: flex; align-items: center;
+      justify-content: center; font-weight: 900; font-size: 20px;
+    }
+    .brand-name { color: white; font-size: 24px; font-weight: 800; letter-spacing: .05em; }
+    .auth-copy { color: white; max-width: 500px; margin-bottom: 20px; }
+    .auth-badge { display: inline-block; padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
+    .auth-copy h1 { font-size: 38px; line-height: 1.2; font-weight: 800; margin-bottom: 20px; color: #f8fafc; }
+    .auth-benefits { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+    .auth-benefits li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #cbd5e1; font-weight: 500; }
+    .check-icon { font-size: 18px; }
+    .auth-preview-image { position: absolute; right: -120px; top: 50%; transform: translateY(-50%); width: 700px; height: 600px; opacity: .2; z-index: 1; pointer-events: none; }
+    .auth-preview-image img { width: 100%; height: 100%; object-fit: contain; }
+    .auth-right-panel {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 40px; overflow-y: auto; scrollbar-width: none;
+    }
+    .auth-right-panel::-webkit-scrollbar { display: none; }
+    .auth-card {
+      background: rgba(255,255,255,0.05); backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 24px;
+      width: 100%; max-width: 460px; padding: 40px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+      animation: mfd-slideUp .3s ease-out;
+    }
+    .auth-card-header { padding-bottom: 20px; }
+    .auth-card-header h2 { margin: 0; font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -.02em; }
+    .auth-card-header p { color: #cbd5e1; font-weight: 500; font-size: 14px; margin-top: 6px; }
+    .auth-view.hidden { display: none; }
+    .auth-footer-links { margin-top: 24px; text-align: center; font-size: 13px; color: #cbd5e1; display: flex; flex-direction: column; gap: 0; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); }
+    .auth-footer-links > div { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .auth-footer-links > div:last-child { border-bottom: none; }
+    .auth-footer-links a { color: #5eead4; text-decoration: none; font-weight: 600; cursor: pointer; }
+    .auth-footer-links a:hover { text-decoration: underline; }
+    .auth-card .form-group input { background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1); color: #fff; }
+    .auth-card .form-group input:focus { border-color: rgba(20,184,166,0.5); box-shadow: 0 0 0 4px rgba(20,184,166,0.15); }
+    .auth-card .form-group input::placeholder { color: #64748b; }
+    .auth-card .form-group label { color: #cbd5e1; }
+    .auth-card .primary-action { width: 100%; justify-content: center; margin-top: 8px; }
+    .auth-card .secondary-action { width: 100%; justify-content: center; margin-top: 12px; background: #f0fdf4; border-color: #16a34a; color: #15803d; }
+    .auth-card .secondary-action:hover { background: #dcfce7; }
+    .segmented-control { display: flex; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-bottom: 18px; }
+    .segmented-control label { flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 6px; cursor: pointer; text-align: center; color: #94a3b8; }
+    .segmented-control label.active { background: rgba(255,255,255,0.1); color: #fff; }
+    .segmented-control input[type="radio"] { display: none; }
+
+    @media (max-width: 900px) {
+      .auth-left-panel { display: none; }
+      .auth-right-panel { max-width: 100%; border-left: none; padding: 24px; }
+    }
+
+    /* ===== HAMBURGER BUTTON ===== */
+    .mfd-hamburger-btn {
+      display: none;
+      align-items: center; justify-content: center;
+      width: 38px; height: 38px;
+      border: 1px solid var(--mfd-line);
+      background: var(--mfd-panel);
+      border-radius: 9px;
+      color: var(--mfd-txt);
+      cursor: pointer;
+      flex-shrink: 0;
+      padding: 0;
+    }
+    .mfd-hamburger-btn:hover { border-color: var(--mfd-teal); }
+
+    /* ===== MOBILE BACKDROP ===== */
+    .mobile-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 999;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+      backdrop-filter: blur(2px);
+    }
+    body.mobile-sidebar-open .mobile-backdrop {
+      opacity: 1; visibility: visible;
+    }
+
+    /* ===== TABLET (≤ 768px) ===== */
+    @media (max-width: 768px) {
+      html, body { overflow-x: hidden; max-width: 100vw; }
+
+      /* Hamburger shows, sidebar hides behind off-canvas */
+      .mfd-hamburger-btn { display: flex; }
+
+      .mfd-layout {
+        grid-template-columns: 1fr !important;
+      }
+
+      /* Off-canvas sidebar */
+      .mfd-sidebar {
+        position: fixed !important;
+        left: -280px;
+        top: 0; bottom: 0;
+        width: 260px !important;
+        z-index: 1000;
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 4px 0 32px rgba(0,0,0,0.25);
+        height: 100vh !important;
+      }
+      body.mobile-sidebar-open .mfd-sidebar {
+        left: 0 !important;
+      }
+
+      /* Topbar adjustments */
+      .mfd-topbar {
+        padding: 10px 14px;
+        gap: 10px;
+      }
+      /* Hide workspace chip on mobile — it's in sidebar */
+      .mfd-topbar .mfd-chip { display: none; }
+      /* Shrink Copilot button text on mobile */
+      #topbarCopilotBtn { padding: 8px 10px; font-size: 12px; }
+
+      /* Main content padding */
+      .mfd-main { padding: 16px 14px; }
+
+      /* KPIs: 2-column on tablet */
+      .mfd-kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+
+      /* Cards: single column */
+      .mfd-cols { grid-template-columns: 1fr; }
+      .mfd-facts { grid-template-columns: 1fr 1fr; gap: 8px; }
+
+      /* Greet heading */
+      .mfd-greet h2 { font-size: 18px; }
+      .mfd-greet p { font-size: 12.5px; }
+
+      /* Hero voice widget */
+      .mfd-hero { padding: 24px 16px 20px; border-radius: 16px; }
+      .mfd-mic { width: 80px; height: 80px; }
+      .mfd-mic svg { width: 32px; height: 32px; }
+
+      /* Live btns */
+      .mfd-live-btns { flex-direction: column; }
+      .mfd-live-btn { width: 100%; justify-content: center; }
+
+      /* Form rows */
+      .mfd-form-row { flex-direction: column; align-items: stretch; }
+      .mfd-process-btn { margin-left: 0; width: 100%; justify-content: center; }
+
+      /* Diff footer */
+      .mfd-diff-footer { flex-direction: column; }
+      .mfd-discard-btn, .mfd-sync-btn { width: 100%; justify-content: center; }
+
+      /* Invite form */
+      .invite-form-row { grid-template-columns: 1fr; }
+
+      /* Tables — allow scroll */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .mfd-commit-table, .mfd-team-table { min-width: 480px; }
+
+      /* Toast */
+      #toast { white-space: normal; text-align: center; max-width: calc(100vw - 32px); font-size: 12.5px; padding: 10px 16px; }
+
+      /* Modals */
+      .modal { padding: 12px; align-items: flex-end; }
+      .modal-content { border-radius: 18px 18px 12px 12px; max-width: 100%; }
+      .modal-body { padding: 18px; }
+
+      /* Auth card */
+      .auth-card { padding: 28px 20px; }
+      .auth-card-header h2 { font-size: 22px; }
+      .auth-right-panel { padding: 16px; }
+
+      /* Existing styles.css components that also need to collapse */
+      .dashboard-layout,
+      .grid-layout,
+      .bottom-layout,
+      .metric-grid,
+      .form-row,
+      .brief-grid,
+      .day4-grid {
+        grid-template-columns: 1fr !important;
+      }
+      .verdict-strip { grid-template-columns: 1fr 1fr; }
+
+      /* Copilot sidecar full-screen */
+      .copilot-sidecar {
+        position: fixed !important;
+        width: 100% !important;
+        right: -100% !important;
+        top: 0; bottom: 0;
+        z-index: 1001;
+        transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      body[data-sidecar-open="true"] .copilot-sidecar { right: 0 !important; }
+    }
+
+    /* ===== PHONE (≤ 480px) ===== */
+    @media (max-width: 480px) {
+      .mfd-topbar { padding: 8px 12px; gap: 8px; }
+      #topbarCopilotBtn span { display: none; } /* hide "Copilot" text, keep icon */
+
+      .mfd-main { padding: 12px 10px; }
+
+      /* KPIs: 2x2 still */
+      .mfd-kpis { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .mfd-kpi { padding: 11px 12px; border-radius: 12px; }
+      .mfd-kpi .kv { font-size: 20px; }
+
+      .mfd-hero { padding: 20px 14px 18px; border-radius: 14px; }
+      .mfd-hero h3 { font-size: 15px; margin-top: 14px; }
+      .mfd-mic { width: 72px; height: 72px; }
+
+      .mfd-card { padding: 14px; border-radius: 14px; }
+      .mfd-card h4 { font-size: 13.5px; }
+
+      .mfd-facts { grid-template-columns: 1fr; }
+      .verdict-strip { grid-template-columns: 1fr; }
+
+      /* Tabs wrap to 2-col grid */
+      .mfd-tabs-header { flex-wrap: wrap; }
+      .mfd-tab-btn { flex: 1 1 calc(50% - 4px); font-size: 11.5px; padding: 8px 6px; }
+
+      /* Avatar menu width */
+      .avatar-menu { width: 200px; right: 0; }
+
+      .auth-card { padding: 22px 16px; border-radius: 18px; }
+      .auth-card-header h2 { font-size: 20px; }
+
+      /* Modal full bottom sheet */
+      .modal { padding: 0; align-items: flex-end; }
+      .modal-content { border-radius: 20px 20px 0 0; }
+    }
+
+    /* ===== MOBILE BOTTOM NAV BAR ===== */
+    .mfd-bottom-nav {
+      display: none; /* hidden on desktop */
+    }
+
+    @media (max-width: 768px) {
+      /* Bottom nav bar */
+      .mfd-bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        height: 60px;
+        background: var(--mfd-panel);
+        border-top: 1px solid var(--mfd-line);
+        z-index: 500;
+        backdrop-filter: blur(12px);
+      }
+      .mfd-bnav-btn {
+        flex: 1;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 3px;
+        background: transparent; border: none;
+        color: var(--mfd-mut);
+        font-family: inherit; cursor: pointer;
+        padding: 6px 4px;
+        transition: color 0.15s;
+        font-size: 10px; font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .mfd-bnav-btn.active { color: var(--mfd-teal); }
+      .mfd-bnav-btn:active { transform: scale(0.94); }
+      .mfd-bnav-icon { font-size: 20px; line-height: 1; }
+      .mfd-bnav-label { font-size: 10px; }
+
+      /* Add bottom padding to main so content isn't hidden behind nav bar */
+      .mfd-main { padding-bottom: 72px !important; }
+
+      /* Tab sections: hide all on mobile, show only active */
+      .mfd-tab-section { display: none; }
+      .mfd-tab-section.active { display: block; }
+
+      /* Fix oval mic — enforce square dimensions */
+      .mfd-mic {
+        width: 76px !important; height: 76px !important;
+        min-width: 76px; min-height: 76px;
+        flex-shrink: 0; align-self: center;
+      }
+      .mfd-halo {
+        width: 100px !important; height: 100px !important;
+      }
+
+      /* Compact hero on mobile */
+      .mfd-hero {
+        padding: 20px 16px 18px;
+        border-radius: 16px;
+      }
+      .mfd-hero h3 { font-size: 15px; margin-top: 12px; }
+      .mfd-hero p { font-size: 12px; margin-top: 4px; }
+
+      /* Daily priorities — stack on mobile */
+      #mfdPrioritySection > div[style*="grid"] {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 16px !important;
+      }
+    }
+
+
+
+    /* ===== DYNAMIC OVERRIDES for app.js-injected content ===== */
+    /* brief-card (injected by loadMemory) */
+    .brief-card {
+      background: var(--mfd-panel2) !important;
+      border-color: var(--mfd-line) !important;
+      color: var(--mfd-txt) !important;
+    }
+    .brief-block {
+      background: var(--mfd-panel) !important;
+      border-color: var(--mfd-line) !important;
+      color: var(--mfd-txt) !important;
+    }
+    .dark-theme .brief-block {
+      background: rgba(255,255,255,0.04) !important;
+    }
+    .brief-block strong, .brief-block p, .brief-block li { color: var(--mfd-txt) !important; }
+    .brief-label { color: var(--mfd-mut) !important; }
+    .brief-card-header h4 { color: var(--mfd-txt) !important; }
+    
+    .narrative-block { background: var(--mfd-teal-soft) !important; border-color: rgba(20,184,166,0.2) !important; }
+    .narrative-block p { color: var(--mfd-txt) !important; }
+
+    /* memory-block, panel-heading, accordion */
+    .memory-block { background: var(--mfd-panel2) !important; border-color: var(--mfd-line) !important; color: var(--mfd-txt) !important; }
+    .memory-block h4 { color: var(--mfd-txt) !important; }
+    .memory-block p, .memory-block li { color: var(--mfd-mut) !important; }
+    .accordion-content { overflow: hidden; transition: max-height 0.4s ease; max-height: 2000px; }
+    .accordion-content.collapsed { max-height: 0 !important; }
+    .panel-heading.accordion-toggle { cursor: pointer; user-select: none; }
+    .panel-heading.accordion-toggle:hover h4 { color: var(--mfd-teal) !important; }
+    .accordion-icon { transition: transform 0.2s; }
+    .accordion-toggle.collapsed .accordion-icon { transform: rotate(-90deg); }
+
+    /* Diff cards injected by renderDiffs() */
+    .diff-card {
+      background: var(--mfd-panel2) !important;
+      border: 1px solid var(--mfd-line) !important;
+      border-radius: 12px !important;
+      padding: 12px 14px !important;
+      margin-bottom: 0 !important;
+      cursor: pointer !important;
+      display: flex !important;
+      gap: 12px !important;
+      align-items: flex-start !important;
+      transition: all .15s !important;
+    }
+    .diff-card:hover { border-color: rgba(20,184,166,0.4) !important; }
+    .diff-card.selected { background: rgba(20,184,166,0.08) !important; border-color: var(--mfd-teal) !important; }
+    .diff-card-body { flex: 1; min-width: 0; }
+    .diff-type-badge { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
+    .diff-type-badge.commitment { color: var(--mfd-teal) !important; }
+    .diff-type-badge.risk { color: var(--mfd-amber) !important; }
+    .diff-type-badge.memory { color: #a78bfa !important; }
+    .diff-card-title { font-size: 13px; font-weight: 600; color: var(--mfd-txt) !important; margin-top: 4px; line-height: 1.45; }
+    .diff-card-meta { font-size: 11.5px; color: var(--mfd-mut) !important; margin-top: 5px; }
+    .diff-card-select { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--mfd-line); background: var(--mfd-panel); flex-shrink: 0; margin-top: 2px; transition: all .15s; display: flex; align-items: center; justify-content: center; }
+    .diff-card.selected .diff-card-select { background: var(--mfd-teal) !important; border-color: var(--mfd-teal) !important; }
+
+    /* Task rows injected by renderTasks() */
+    .task-row, .priority-item {
+      background: linear-gradient(90deg, var(--mfd-amber-soft), transparent), var(--mfd-panel2) !important;
+      border: 1px solid rgba(245,158,11,.35) !important;
+      border-radius: 14px !important;
+      padding: 14px 16px !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 14px !important;
+      margin-bottom: 10px !important;
+    }
+    .task-row .task-title, .priority-item .task-title { color: var(--mfd-txt) !important; font-weight: 600 !important; }
+    .task-row .task-meta, .priority-item .task-meta { color: var(--mfd-mut) !important; font-size: 12px !important; }
+
+    /* Risk rows */
+    .risk-row, .risk-item {
+      background: linear-gradient(90deg, var(--mfd-red-soft), transparent), var(--mfd-panel2) !important;
+      border: 1px solid rgba(239,68,68,.3) !important;
+      border-radius: 14px !important;
+      padding: 12px 16px !important;
+      margin-bottom: 10px !important;
+    }
+
+    /* Commitment table rows */
+    .commitment-row td { color: var(--mfd-txt) !important; }
+    .status-pill { display: inline-flex; align-items: center; padding: 3px 10px; font-size: 11px; font-weight: 700; border-radius: 999px; }
+    .status-pill.done { background: rgba(20,184,166,0.12); color: var(--mfd-teal); border: 1px solid rgba(20,184,166,0.3); }
+    .status-pill.pending { background: var(--mfd-amber-soft); color: var(--mfd-amber); border: 1px solid rgba(245,158,11,0.3); }
+    .status-pill.overdue { background: var(--mfd-red-soft); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .muted { color: var(--mfd-mut) !important; }
+    .mark-done-btn { background: transparent; border: 1px solid var(--mfd-line); color: var(--mfd-mut); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-family: inherit; }
+    .mark-done-btn:hover { border-color: var(--mfd-teal); color: var(--mfd-teal); }
+
+    /* Philixa Voice overlay / copilot chat bubbles */
+    .chat-bubble { padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; color: var(--mfd-txt); max-width: 88%; }
+    .ai-bubble { background: rgba(20,184,166,0.1); border: 1px solid rgba(20,184,166,0.2); align-self: flex-start; }
+    .user-bubble { background: rgba(20,184,166,0.18); align-self: flex-end; }
+
+    /* Team performance table */
+    #teamPerformanceBody tr { border-top: 1px solid var(--mfd-line); }
+    #teamPerformanceBody td { color: var(--mfd-txt); padding: 11px 8px; font-size: 13px; }
+
+    /* copilot sidecar open — shift main layout */
+    body.copilot-open .mfd-layout { padding-right: 360px; }
+
+    /* Prevent flash before auth check */
+    html.not-logged-in .mfd-layout { display: none !important; }
+    html.not-logged-in #mfdTopbar { display: none !important; }
+    html.not-logged-in #authModal { display: flex !important; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--mfd-line); border-radius: 6px; }
+
+    /* Misc utilities */
+    .hidden { display: none !important; }
+    .empty-state { color: var(--mfd-mut); font-size: 13px; padding: 20px; text-align: center; }
+    .communication-feed { display: flex; flex-direction: column; gap: 10px; }
+  </style>
+  <script>
+    // Run synchronously before body renders
+    if (localStorage.getItem("p6_logged_in") !== "true") {
+      document.documentElement.classList.add("not-logged-in");
+    }
+  </script>
+</head>
+
+<body>
+  <div id="businessApp" class="business-app">
+    <aside class="business-sidebar" aria-label="Chat navigation">
+      <a class="business-brand" href="/" aria-label="Philixa home"><span class="business-mark">p</span> philixa<span class="business-brand-dot">.</span></a>
+      <button class="business-new" id="businessNewChat" type="button"><span aria-hidden="true">＋</span> New chat</button>
+      <button class="business-new" id="businessDraftsBtn" type="button">Bills · saved drafts</button>
+      <button class="business-new" id="businessDocumentsBtn" type="button">Upload bills · originals</button>
+      <div class="business-nav-label">YOUR WORKSPACE</div>
+      <div id="businessWorkspaceSlot"></div>
+      <div class="business-nav-label">RECENT CHATS</div>
+      <nav id="businessChatList" class="business-chat-list" aria-label="Saved conversations"></nav>
+      <div class="business-sidebar-note"><span class="business-note-icon" aria-hidden="true">✧</span><strong>Your business. One conversation.</strong><p>Stock, hisab, reminders aur entries — bas bolkar.</p></div>
+      <div class="business-sidebar-bottom"><button id="businessConnectionBtn" type="button">Connect your software <span aria-hidden="true">↗</span></button><button id="businessSignOut" type="button">Sign out</button></div>
+    </aside>
+    <main class="business-main">
+      <header class="business-header"><div><button id="businessMobileMenu" class="business-mobile-menu" type="button" aria-label="Open chat menu" aria-expanded="false">☰</button><span class="business-mobile-brand">philixa.</span><span class="business-header-name">Business Assistant</span><span class="business-preview">Voice chat</span></div><button id="businessConnectionTop" class="business-connection" type="button"><span class="business-status-dot"></span> No software connected</button></header>
+      <div class="business-scroll" id="businessScroll">
+        <section class="business-welcome" id="businessWelcome">
+          <div class="business-greeting">A little less work. A lot more clarity.</div>
+          <h1>Aaj kya kaam karna hai?</h1>
+          <p>Apne business ke baare mein poochho.<br>Ya bolo, kya karna hai.</p>
+          <div class="business-prompts">
+            <button type="button" data-business-command="customer_list"><span class="business-prompt-icon" aria-hidden="true">▦</span><strong>Customer dekho</strong><span>Number aur pichhli baat</span><i aria-hidden="true">↗</i></button>
+            <button type="button" data-business-command="task_list"><span class="business-prompt-icon" aria-hidden="true">↗</span><strong>Aaj ke kaam</strong><span>Due aur overdue follow-ups</span><i aria-hidden="true">↗</i></button>
+            <button type="button" data-business-prompt="Customer ke liye kal payment follow-up task banana hai."><span class="business-prompt-icon" aria-hidden="true">◷</span><strong>Follow-up banao</strong><span>Bolo, kis din kya karna hai</span><i aria-hidden="true">↗</i></button>
+            <button type="button" data-business-prompt="Customer ko email par payment follow-up ka message draft karke dikhao."><span class="business-prompt-icon" aria-hidden="true">＋</span><strong>Message draft</strong><span>Preview dekho, phir send karo</span><i aria-hidden="true">↗</i></button>
+          </div>
+        </section>
+        <section id="businessMessages" class="business-messages" role="log" aria-live="polite" aria-label="Conversation"></section>
+      </div>
+      <div class="business-composer-wrap"><nav class="business-tool-nav" aria-label="Business tools"><button type="button" data-business-command="customer_list">Customers</button><button type="button" data-business-command="task_list">Aaj ke kaam</button><button type="button" data-business-command="task_list" data-business-filter="all">Saare pending</button><button type="button" data-business-command="stock_read">Tally stock</button><button type="button" data-business-command="mcp_read">Tally reports</button></nav>
+        <p id="businessVoiceStatus" class="business-voice-status" role="status"></p>
+        <form id="businessComposer" class="business-composer">
+          <label for="businessInput" class="business-sr-only">Message your business assistant</label>
+          <textarea id="businessInput" rows="1" maxlength="4000" placeholder="Poochho ya koi kaam bolo…"></textarea>
+          <div class="business-composer-bottom"><span>Hindi · Hinglish · English</span><div><button id="businessMic" class="business-mic" type="button" aria-label="AI se bolkar baat karein" aria-pressed="false" title="AI se bolkar baat karein"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg></button><button id="businessSend" class="business-send" type="submit" aria-label="Send message" disabled><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 12 6-6 6 6M12 6v13"/></svg></button></div></div>
+        </form>
+        <p class="business-footnote">Customers aur follow-ups yahin saved hain. Stock/hisab ke liye software connection chahiye.</p>
+      </div>
+    </main>
+  </div>
+  <dialog id="businessDocuments" class="business-dialog bill-drafts-dialog">
+    <div class="business-dialog-head"><h2>Private bill documents</h2><button id="businessCloseDocuments" type="button" aria-label="Close documents">×</button></div>
+    <div class="document-controls"><label>Company<select id="documentCompany"></select></label><label>Saved batches<select id="documentBatch"></select></label><button id="documentNewBatch" type="button">New batch</button></div>
+    <label>Select PDF/JPG/PNG<input id="documentFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" /></label><button id="documentUpload" type="button">Upload files</button>
+    <p id="documentStatus" role="status"></p><div class="bill-drafts-layout"><div id="documentList" aria-label="Uploaded files"></div><div>
+      <div class="document-controls"><button id="documentPrevious" type="button" disabled>Previous page</button><button id="documentNext" type="button" disabled>Next page</button><button id="documentDownload" type="button" disabled>Download original</button></div>
+      <p id="documentPage"></p><div id="documentViewer" aria-label="Original document viewer"></div></div></div>
+  </dialog>
+  <dialog id="businessDrafts" class="business-dialog bill-drafts-dialog">
+    <div class="business-dialog-head"><h2>Saved bill drafts</h2><button id="businessCloseDrafts" type="button" aria-label="Close bill drafts">×</button></div>
+    <div class="bill-drafts-actions"><button id="billDraftNew" type="button">New draft</button><button id="billDraftReload" type="button">Refresh list</button></div>
+    <div class="bill-drafts-layout" id="billDraftsLayout"><nav id="billDraftList" aria-label="Saved bill drafts"></nav>
+    <div id="billDraftDocPanel" class="draft-document-panel" aria-label="Source Document Viewer" hidden>
+      <div class="document-controls"><button id="billDraftDocPrev" type="button" disabled>Previous page</button><button id="billDraftDocNext" type="button" disabled>Next page</button><button id="billDraftDocDownload" type="button">Download original</button></div>
+      <p id="billDraftDocPage" class="draft-doc-page-label"></p>
+      <div id="billDraftDocViewer" class="draft-doc-viewer" aria-label="Original document viewer"></div>
+    </div>
+    <div id="billDraftFormWrap">
+      <div id="billDraftExtractionReview" class="extraction-review-card" hidden></div>
+      <form id="billDraftForm">
+        <label>Company<select id="billDraftCompany" required></select></label>
+        <label>Invoice number<input name="invoice_number" id="billDraftInvoiceNo" maxlength="100" placeholder="e.g. INV-2026-001" /></label>
+        <label>Supplier<input name="party_name" maxlength="200" list="billDraftSuppliers" /></label>
+        <datalist id="billDraftSuppliers"></datalist><datalist id="billDraftItems"></datalist>
+        <div id="billDraftLines" aria-label="Purchase items"></div>
+        <button id="billDraftAddLine" type="button">Add item</button>
+        <output id="billDraftTotal" aria-live="polite">Total pending</output>
+        <label>Purchase date<input name="entry_date" type="date" /></label>
+        <label>Godown<input name="godown" maxlength="200" /></label>
+        <label>Tax treatment<select name="tax_treatment" id="billDraftTaxTreatment"><option value="">Non-GST / no tax fields</option><option value="regular_domestic_goods">GST · domestic regular goods</option></select></label>
+        <section id="billDraftTaxFields" hidden>
+          <p>Match the original bill. Tax and totals must agree with company/item masters; differences are never adjusted silently.</p>
+          <label>Supplier GSTIN<input name="supplier_gstin" maxlength="15" /></label>
+          <label>Place of supply state code<input name="place_of_supply" maxlength="2" placeholder="e.g. 06" /></label>
+          <label>Invoice discount ₹ (before tax)<input name="invoice_discount" type="number" min="0" step="0.01" /></label>
+          <label>Disclosed round-off ₹ (−1 to +1)<input name="round_off" type="number" min="-1" max="1" step="0.01" /></label>
+          <label>Original invoice grand total ₹<input name="invoice_total" type="number" min="0" step="0.01" /></label>
+          <div id="billDraftExpectedTaxes"></div>
+          <details><summary>Company GST ledger setup</summary><p>Select exact existing Tally ledgers. Setup is saved for this company.</p>
+            <div id="billDraftTaxLedgers"></div><label>Round-off ledger<input id="billDraftRoundingLedger" list="billDraftRoundingChoices" maxlength="200" /></label><datalist id="billDraftRoundingChoices"></datalist>
+            <button id="billDraftSaveTaxProfile" type="button">Save company GST setup</button>
+          </details>
+          <button id="billDraftTaxCheck" type="button">Check saved bill taxes &amp; totals</button>
+          <output id="billDraftTaxResult" aria-live="polite"></output>
+        </section>
+        <button id="billDraftSave" type="submit">Save draft</button><button id="billDraftMakePreview" type="button">Create Tally preview</button>
+      </form><p id="billDraftStatus" role="status"></p><div id="billDraftPreview"></div><details><summary>Revision history</summary><div id="billDraftAudit"></div></details>
+    </div></div>
+  </dialog>
+  <dialog id="businessConnections" class="business-dialog"><div class="business-dialog-head"><h2>Tally setup</h2><button id="businessCloseConnections" type="button" aria-label="Close connections">×</button></div>
+<p>Ek baar setup karein. Phir connection automatic rahega.</p><ol><li>Download Tally Connector</li><li>Windows installer kholkar Install &amp; continue dabayein</li><li>Connector ka code yahan paste karein</li><li>Companies select karke approve karein</li></ol>
+<section id="tallyReadSetup"><p id="tallyReadStatus" role="status"></p>
+<button id="tallyDownload" class="business-back" type="button" hidden>Download Tally Connector</button>
+<div id="tallyInstallStep" hidden><p>Tally wale Windows PC par download karein. Chrome Downloads (Ctrl+J) mein PhilixaTallyConnectorSetup.exe kholkar Install &amp; continue dabayein.</p><p class="business-dialog-note">Windows app · Trial version, digital signature abhi nahi hai.</p><button id="tallyHaveCode" class="tally-link" type="button">Already installed? Enter code</button></div>
+<form id="tallyPairForm" class="business-tool-form" hidden><p>Philixa Tally Connector kholein aur usmein dikh raha code yahan dalein.</p><label>Connection code<input name="code" required pattern="[A-Fa-f0-9]{12}" maxlength="12" autocomplete="off" placeholder="12-character code"></label><label id="tallyReplaceLabel" class="tally-checkbox" hidden><input type="checkbox" name="replace"> Purane PC ki jagah is PC ko connect karein</label><button class="business-back">Connect</button></form>
+<button id="tallyVerifySetup" class="business-back" type="button" hidden>Check live connection</button>
+<button id="tallyDiscover" class="business-back" type="button" hidden>Choose companies</button>
+<form id="tallyCompanyAccess" class="business-tool-form" hidden><p>Jin companies ka stock dekhna hai, unhe select karein. Ye sirf ek baar karna hai.</p><div id="tallyCompanyList"></div><button class="business-back">Save &amp; continue</button></form></section>
+<details class="tally-advanced"><summary>Advanced settings</summary><p>Test-company entry settings</p><button id="tallyChangeComputer" class="tally-link" type="button" hidden>Change connected PC</button><button id="tallyRevoke" class="tally-link" type="button" hidden>Disconnect PC</button><label id="tallyLocalLabel" hidden><input id="tallyLocal" type="checkbox"> Local development connection</label><p id="tallyConnectionStatus" role="status">Configuration load ho rahi hai…</p><button id="tallyProbe" class="business-back" type="button">Connection check</button><form id="tallyConnectionForm" class="business-tool-form" hidden><label>Test company<select name="company" required></select></label><label>Godown<select name="godown" required></select></label><label>Purchase ledger<select name="purchase_ledger" required></select></label><label>Sales ledger<select name="sales_ledger" required></select></label><label class="tally-checkbox"><input type="checkbox" name="test_company" required> Ye separate practice/test company hai; real accounts nahi</label><button type="submit" class="business-back">Save connection</button></form><p class="business-dialog-note">GST bill calculations and review available. GST posting locked until real Tally acceptance. Returns, batches and multiple godowns remain unsupported.</p></details><button id="businessBackToChat" class="tally-link" type="button">Back to chat</button></dialog>
+  <!-- ===== TOP BAR ===== -->
+  <!-- ===== 3-COLUMN LAYOUT ===== -->
+  <div class="mfd-layout app-shell" id="appShell">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="mfd-sidebar" id="mfdSidebar">
+      <div class="mfd-sidebar-header" style="width:100%;">
+        <div class="mfd-logo" id="logoToggleBtn" style="flex-shrink:0;">P6</div>
+        <div class="mfd-brand">
+          <b id="topbarTitle">Philixa</b>
+          <span id="topbarPlanBadge" class="mfd-plan-badge" style="display:inline-block;margin-top:2px;">MFD Mode</span>
+        </div>
+        <div style="flex: 1;" class="mfd-header-spacer"></div>
+        <button id="sidebarToggleBtn" class="mfd-icon-btn" title="Toggle Sidebar" style="color: var(--mfd-mut); flex-shrink:0; border:none; background:transparent; font-size:20px;">≡</button>
+      </div>
+
+      <!-- Client selector row -->
+      <div class="mfd-client-row">
+        <button class="mfd-client-btn" id="topClientSelectWrap" title="Select client">
+          👤 <select id="topClientSelect" style="border:none;background:transparent;font-size:12px;color:inherit;cursor:pointer;outline:none;padding:0;font-family:inherit;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;" aria-label="Select active client filter">
+            <option value="">@client (All)</option>
+          </select>
+          <span class="cv">▾</span>
+        </button>
+        <button id="viewClientProfileBtn" class="mfd-icon-btn" type="button" title="View Client Profile" style="display:none;">📝</button>
+        <button id="deleteSelectedClientBtn" class="mfd-icon-btn danger" type="button" title="Delete Selected Client" style="display:none;">🗑️</button>
+      </div>
+
+      <!-- Workspace selector -->
+      <div class="mfd-ws-row" title="Current Workspace">
+        🏢 <select id="workspaceSelectSidebar" class="mfd-ws-select" style="font-size:12px;" aria-label="Select workspace">
+          <option value="" disabled selected>Loading...</option>
+        </select>
+      </div>
+
+      <!-- Scope selector (owner/admin only) -->
+      <div class="mfd-ws-row" id="scopeSelectorWrap" title="View Scope" style="display:none;">
+        👁️ <select id="scopeSelect" class="mfd-ws-select" style="font-size:12px;" aria-label="View scope">
+          <option value="team" selected>Team Workspace</option>
+          <option value="me">My Workspace</option>
+        </select>
+      </div>
+
+      <div class="mfd-divider"></div>
+
+      <!-- Nav links -->
+      <a href="#mfdNotePanel" class="mfd-nav"><span class="mfd-nav-icon">📝</span> <span class="mfd-nav-label">Process Notes</span></a>
+      <a href="#mfdDiffSection" class="mfd-nav"><span class="mfd-nav-icon">✨</span> <span class="mfd-nav-label">Review Workbench</span></a>
+      <a href="#mfdPrioritySection" class="mfd-nav"><span class="mfd-nav-icon">☀️</span> <span class="mfd-nav-label">Daily Priorities</span></a>
+      <a href="#mfdMemorySection" class="mfd-nav"><span class="mfd-nav-icon">🧠</span> <span class="mfd-nav-label">Client Memory</span></a>
+      <a href="#mfdCommitmentSection" class="mfd-nav"><span class="mfd-nav-icon">📋</span> <span class="mfd-nav-label">Commitments</span></a>
+
+      <!-- User footer -->
+      <div class="mfd-sidebar-foot">
+        <span id="sidebarUserName">User</span><br>
+        <span id="sidebarPlan">FREE plan</span>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT COLUMN ===== -->
+    <div class="mfd-main-col">
+      <!-- ===== TOPBAR ===== -->
+      <div id="mfdTopbar" class="mfd-topbar">
+
+        <!-- Mobile hamburger — only visible on phone -->
+        <button id="mobileNavToggleBtn" class="mfd-hamburger-btn" type="button" aria-label="Open navigation menu" title="Menu">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/>
+          </svg>
+        </button>
+
+        <!-- Workspace selector -->
+        <div class="mfd-chip" title="Active Workspace">
+          🏢 <select id="workspaceSelect" class="mfd-ws-select" aria-label="Select active workspace">
+            <option value="" disabled selected>Loading...</option>
+          </select>
+        </div>
+
+        <div class="mfd-spacer"></div>
+
+        <!-- Copilot button -->
+        <button id="topbarCopilotBtn" class="mfd-topbar-btn" type="button" title="Open AI Copilot (Cmd+Shift+L)">
+          ✨ Copilot
+        </button>
+
+        <!-- Avatar dropdown -->
+        <div class="avatar-dropdown-container" id="avatarDropdownContainer">
+          <button id="avatarBtn" class="mfd-avatar-btn" type="button" aria-haspopup="menu" aria-expanded="false" title="User Menu">U</button>
+          <div id="avatarMenu" class="avatar-menu hidden" role="menu">
+            <div class="avatar-menu-header">
+              <span id="userNameDisplay" class="user-name-text">User</span>
+              <span id="userEmailDisplay" class="user-email-text" title="Logged in user">user@example.com</span>
+            </div>
+            <div class="avatar-menu-body">
+              <button id="manageMembersBtn" type="button" class="avatar-menu-item" data-min-role="admin" role="menuitem">
+                <span class="icon">👥</span> Manage Members
+              </button>
+              <button id="settingsBtn" type="button" class="avatar-menu-item" role="menuitem">
+                <span class="icon">⚙️</span> Preferences
+              </button>
+              <button id="themeToggleBtn" type="button" class="avatar-menu-item" role="menuitem">
+                <span class="icon">🌙</span> Toggle Theme
+              </button>
+              <div class="avatar-menu-divider"></div>
+              <button id="logoutBtn" type="button" class="avatar-menu-item logout-item" role="menuitem">
+                <span class="icon">🚪</span> Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <main class="mfd-main">
+
+      <!-- Loading state -->
+      <div id="mfdContentLoader">
+        <div class="mfd-loader-icon">P6</div>
+        <p>Loading Workspace...</p>
+      </div>
+
+      <!-- ===== MOBILE BOTTOM NAV (only visible on phone) ===== -->
+      <nav class="mfd-bottom-nav" id="mfdBottomNav" aria-label="Mobile navigation">
+        <button class="mfd-bnav-btn active" data-tab="home" type="button">
+          <span class="mfd-bnav-icon">🏠</span>
+          <span class="mfd-bnav-label">Home</span>
+        </button>
+        <button class="mfd-bnav-btn" data-tab="notes" type="button">
+          <span class="mfd-bnav-icon">📝</span>
+          <span class="mfd-bnav-label">Notes</span>
+        </button>
+        <button class="mfd-bnav-btn" data-tab="today" type="button">
+          <span class="mfd-bnav-icon">☀️</span>
+          <span class="mfd-bnav-label">Today</span>
+        </button>
+        <button class="mfd-bnav-btn" data-tab="memory" type="button">
+          <span class="mfd-bnav-icon">🧠</span>
+          <span class="mfd-bnav-label">Memory</span>
+        </button>
+      </nav>
+
+      <!-- Dashboard content (shown after login) -->
+      <div id="mfdDashboard">
+
+        <!-- ===== MOBILE TAB: HOME ===== -->
+        <div class="mfd-tab-section active" data-tab="home">
+
+        <!-- Greeting -->
+        <div class="mfd-greet">
+          <h2 id="mfdGreetingName">Welcome back 👋</h2>
+          <p>Just <b>3 steps</b> today: <b>Speak</b> → <b>Review</b> → <b>Forget</b>. I'll remember the rest.</p>
+        </div>
+
+        <!-- KPI Strip -->
+        <div class="mfd-kpis">
+          <div class="mfd-kpi" id="verdictCardClients" role="button" tabindex="0">
+            <small>Clients</small>
+            <div class="kv"><span id="clientCount">0</span></div>
+          </div>
+          <div class="mfd-kpi" id="verdictCardPending" role="button" tabindex="0">
+            <small>Open Tasks</small>
+            <div class="kv"><span id="pendingCount">0</span></div>
+          </div>
+          <div class="mfd-kpi" id="verdictCardMeetings" role="button" tabindex="0">
+            <small>Meetings (Mo)</small>
+            <div class="kv"><span id="meetingsLoggedCount">0</span></div>
+          </div>
+          <div class="mfd-kpi" id="verdictCardRisks" role="button" tabindex="0">
+            <small>Risk Alerts</small>
+            <div class="kv"><span id="riskSignalsStripCount">0</span> <span class="ok" id="riskSignalsStripBadge">All clear</span></div>
+          </div>
+        </div>
+
+        <!-- Hero Voice Button -->
+        <div class="mfd-hero">
+          <div class="mfd-halo"></div>
+          <!-- This button id is picked up by philixa-voice.js -->
+          <button id="philixaVoiceBtn" class="mfd-mic" title="Tap to speak — Hinglish supported">
+            <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+          </button>
+          <h3>Speak. I'll handle the rest.</h3>
+          <p>Speak in Hinglish — I'll write the note, commitments &amp; risks myself</p>
+          <div id="philixaVoiceStatus" class="mfd-live-status" style="display:none;"></div>
+        </div>
+
+        </div><!-- end home tab -->
+
+        <!-- ===== MOBILE TAB: NOTES ===== -->
+        <div class="mfd-tab-section" data-tab="notes">
+
+        <!-- 2-column: Intake + Review -->
+        <div class="mfd-cols">
+
+          <!-- LEFT: Note Intake -->
+          <section class="mfd-card" id="mfdNotePanel" aria-label="Meeting Note Intake">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <h4>📝 New Note</h4>
+              <select id="knownClient" style="margin-left:auto;max-width:180px;background:var(--mfd-panel2);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:8px;padding:6px 10px;font-size:12px;outline:none;font-family:inherit;" aria-label="Auto identify client">
+                <option value="">Auto identify client</option>
+              </select>
+            </div>
+            <div class="mfd-sub">Whatever's convenient — type it, drop audio, or record live</div>
+
+            <!-- Tabs -->
+            <div class="mfd-tabs-header" role="tablist">
+              <button class="mfd-tab-btn active" id="tabTextBtn" type="button" role="tab">Paste Notes</button>
+              <button class="mfd-tab-btn" id="tabAudioBtn" type="button" role="tab">Upload Audio</button>
+              <button class="mfd-tab-btn" id="tabLiveBtn" type="button" role="tab"><span style="color:#ef4444;">🔴</span> Live Record</button>
+              <button class="mfd-tab-btn" id="tabFastDictationBtn" type="button" role="tab">⚡ Fast Dictation</button>
+            </div>
+
+            <!-- Tab: Text -->
+            <div id="viewText">
+              <textarea id="rawNotes" spellcheck="true" placeholder="Paste meeting notes or client conversation here...">Met Rajesh Sharma today. Interested in business loan. Concerned about processing time. Promised documents by Friday.</textarea>
+              <div class="mfd-form-row">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--mfd-txt);">
+                  Meeting date
+                  <input id="meetingDate" type="date" class="mfd-date-input" style="width:auto;" />
+                </label>
+                <button class="mfd-process-btn" id="processNotes" type="button" title="Process notes with AI (Cmd+Enter)">
+                  ✨ Process with AI <span style="font-size:11px;opacity:.8;font-weight:normal;">(Cmd+↵)</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Tab: Audio -->
+            <div id="viewAudio" class="hidden">
+              <div class="mfd-upload-area" id="uploadBox">
+                <input type="file" id="audioFileInput" accept=".mp3,.m4a,.wav" />
+                <label for="audioFileInput" style="cursor:pointer;">
+                  <span style="font-size:24px;display:block;margin-bottom:8px;">📁</span>
+                  <span id="uploadFileName">Click to select audio file</span>
+                  <span style="display:block;font-size:12px;color:var(--mfd-mut);margin-top:4px;">.mp3, .m4a, .wav (Max 50MB)</span>
+                </label>
+              </div>
+              <div class="mfd-form-row">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--mfd-txt);">
+                  Meeting date
+                  <input id="meetingDateAudio" type="date" class="mfd-date-input" style="width:auto;" />
+                </label>
+                <button class="mfd-process-btn" id="processAudio" type="button" disabled>Upload &amp; Process</button>
+              </div>
+              <div id="audioStatusBox" class="mfd-audio-status hidden">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span id="audioStatusDot" style="width:9px;height:9px;border-radius:50%;background:var(--mfd-teal);display:inline-block;"></span>
+                  <strong id="audioStatusText" style="color:var(--mfd-teal);">Uploading...</strong>
+                </div>
+                <p style="font-size:12px;color:var(--mfd-mut);margin-top:8px;margin-bottom:0;" id="audioStatusDetails">Please wait while the file is sent to the server.</p>
+              </div>
+            </div>
+
+            <!-- Tab: Live Record -->
+            <div id="viewLive" class="hidden">
+              <div class="mfd-live-area">
+                <div class="mfd-live-btns">
+                  <button id="startSoloBtn" type="button" class="mfd-live-btn solo">🎙 Solo Record</button>
+                  <button id="startMeetingBtn" type="button" class="mfd-live-btn meeting">👥 Meeting Record</button>
+                  <button id="stopLiveBtn" type="button" class="mfd-live-btn stop" disabled>⏹ Stop &amp; Save</button>
+                </div>
+                <span id="liveStatusText" style="color:var(--mfd-mut);font-size:13px;">⏸ Ready</span>
+                <div style="margin-top:14px;font-size:12px;color:var(--mfd-mut);line-height:1.6;">
+                  🎙 <strong style="color:var(--mfd-txt);">Solo</strong> — Only you speaking (Fast, ~20s) &nbsp;|&nbsp; 👥 <strong style="color:var(--mfd-txt);">Meeting</strong> — Client present, speaker labels (Slow, ~60s)
+                </div>
+                <div id="liveRecordingIndicator" style="font-size:28px;margin-top:10px;">🎙</div>
+              </div>
+              <p style="font-size:12px;color:var(--mfd-mut);margin-top:8px;margin-bottom:0;">⚡ After Stop &amp; Save, transcript appears in Paste Notes — review and click Process.</p>
+            </div>
+
+            <!-- Tab: Fast Dictation -->
+            <div id="viewFastDictation" class="hidden">
+              <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+                <button id="startDictationBtn" type="button" class="mfd-live-btn solo">🎙 Start Dictation</button>
+                <button id="stopDictationBtn" type="button" class="mfd-live-btn stop" disabled>⏹ Stop &amp; Save</button>
+                <span id="dictationStatusText" style="color:var(--mfd-mut);font-size:13px;">⏸ Ready (Web Speech API)</span>
+              </div>
+              <div style="border:1px solid var(--mfd-line);border-radius:10px;padding:16px;min-height:100px;background:var(--mfd-panel2);">
+                <div id="dictationResult" style="font-weight:600;color:var(--mfd-txt);white-space:pre-wrap;font-size:14px;line-height:1.6;"></div>
+                <div style="font-size:12px;color:var(--mfd-mut);margin-top:10px;">Instant dictation using browser native speech API.</div>
+              </div>
+            </div>
+
+            <!-- Hidden panels for JS -->
+            <div id="editTranscriptPanel" class="hidden" style="margin-top:14px;">
+              <p style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--mfd-mut);">Manual Review Required</p>
+              <h4 style="margin:4px 0 8px;color:var(--mfd-txt);">Edit Audio Transcript</h4>
+              <p style="font-size:13px;color:var(--mfd-mut);margin-bottom:10px;">The AI could not automatically generate a summary from this audio. Please review and edit the transcript, then click 'Save &amp; Re-process'.</p>
+              <textarea id="editTranscriptText" spellcheck="true" style="width:100%;min-height:120px;margin-bottom:10px;background:var(--mfd-panel2);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:10px;padding:12px;font-family:inherit;font-size:13px;outline:none;resize:vertical;"></textarea>
+              <button class="mfd-process-btn" id="saveTranscriptBtn" type="button">Save &amp; Re-process</button>
+            </div>
+
+            <div class="hidden" id="confirmPanel" style="margin-top:14px;background:var(--mfd-panel2);border:1px solid var(--mfd-line);border-radius:12px;padding:16px;">
+              <p style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--mfd-mut);">Confirmation required</p>
+              <h4 style="margin:4px 0 12px;color:var(--mfd-txt);">Attach this meeting to a client</h4>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <select id="confirmClientSelect" style="background:var(--mfd-panel);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:8px;padding:8px;font-family:inherit;font-size:13px;outline:none;"><option value="">Select existing client</option></select>
+                <input id="newClientName" type="text" placeholder="Or create new client name" style="background:var(--mfd-panel);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:8px;padding:8px;font-family:inherit;font-size:13px;outline:none;" />
+                <input id="newClientEmail" type="email" placeholder="Email (optional)" style="background:var(--mfd-panel);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:8px;padding:8px;font-family:inherit;font-size:13px;outline:none;" />
+                <input id="newClientPhone" type="text" placeholder="Phone (optional)" style="background:var(--mfd-panel);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:8px;padding:8px;font-family:inherit;font-size:13px;outline:none;" />
+                <button id="confirmClient" type="button" class="mfd-process-btn" style="grid-column:1/-1;">Confirm client</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- RIGHT: Review Workbench -->
+          <section class="mfd-card" id="mfdDiffSection" aria-label="Structured Diff Review">
+            <div class="mfd-rv-head">
+              <h4>✨ Review</h4>
+              <span class="mfd-badge"><span id="diffTotalCount">0</span> items found</span>
+            </div>
+            <div class="mfd-sub">I understood the note — everything below came from your own words.</div>
+
+            <!-- Filter pills -->
+            <div class="mfd-filter-row" id="diffPillFilters">
+              <button type="button" class="mfd-fchip active" data-filter="all">All (<span id="countAll">0</span>)</button>
+              <button type="button" class="mfd-fchip" data-filter="commitment">Commitments (<span id="countCommitments">0</span>)</button>
+              <button type="button" class="mfd-fchip" data-filter="risk">Risks (<span id="countRisks">0</span>)</button>
+              <button type="button" class="mfd-fchip" data-filter="memory">Memory (<span id="countMemory">0</span>)</button>
+            </div>
+
+            <!-- Diff stream -->
+            <div class="mfd-diff-stream" id="processResult" tabindex="-1" aria-live="polite">
+              <div class="empty-state">Process a meeting note with AI to review and sync structured commitments, risks, and memory.</div>
+            </div>
+
+            <!-- Action footer -->
+            <div class="mfd-diff-footer" id="diffActionBar" style="display:none;">
+              <button type="button" class="mfd-discard-btn" id="diffDiscardAllBtn">Discard All</button>
+              <button type="button" class="mfd-sync-btn" id="diffSyncSelectedBtn">
+                ✓ Sync Selected (<span id="diffApprovedCount">0</span>)
+              </button>
+            </div>
+
+            <div class="mfd-gate-note">🛡️ <b>AI-drafted, advisor-approved</b> — SEBI-safe record with timestamp</div>
+          </section>
+        </div>
+
+        </div><!-- end notes tab -->
+
+        <!-- ===== MOBILE TAB: TODAY ===== -->
+        <div class="mfd-tab-section" data-tab="today">
+
+        <!-- Today's Work / Priorities + Risk -->
+        <section class="mfd-card" id="mfdPrioritySection" style="margin-bottom:18px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+            <div>
+              <h4 style="margin:0 0 4px;">☀️ Daily Priorities</h4>
+              <div class="mfd-sub">Follow-up tasks from your conversations</div>
+              <div id="taskList" style="margin-top:12px;">
+                <div class="empty-state">✅ All caught up! No pressing tasks for today.</div>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                <h4 id="riskSignalsHeader" style="margin:0;">Risk Signals</h4>
+                <span id="riskSignalsBadge" style="font-size:11px;font-weight:600;background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.3);padding:2px 10px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;">
+                  <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>0 Active — All Clear
+                </span>
+              </div>
+              <div id="riskList" style="margin-top:12px;">
+                <div class="empty-state">🛡️ All clear. No active risk signals detected.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        </div><!-- end today tab -->
+
+        <!-- ===== MOBILE TAB: MEMORY ===== -->
+        <div class="mfd-tab-section" data-tab="memory">
+
+        <!-- Client Memory + Commitments tabs -->
+        <div id="mfdMemorySection" style="margin-bottom:18px;">
+          <!-- Tab switcher -->
+          <div class="mfd-mem-tabs">
+            <button class="mfd-mem-tab active sidebar-tab-btn" type="button" data-tab-target="memoryPanel">🧠 Client Memory</button>
+            <button class="mfd-mem-tab sidebar-tab-btn" type="button" data-tab-target="commitmentPanel">📋 Commitments</button>
+          </div>
+
+          <!-- Memory panel -->
+          <div class="mfd-mem-card sidebar-tab-content" id="memoryPanel">
+            <div class="mfd-mem-head">
+              <button class="mfd-mem-toggle">🧠 Client memory <span class="cv">▾</span></button>
+              <button id="loadSelectedMemory" type="button" class="mfd-load-mem-btn">Load memory</button>
+            </div>
+
+            <!-- Ask client AI -->
+            <div id="askClientSection" class="hidden" style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--mfd-line);">
+              <div class="mfd-ask-row">
+                <input id="askClientInput" type="text" placeholder="Ask AI about this client... (e.g. What is the latest concern?)" />
+                <button id="askClientVoiceBtn" type="button" class="mfd-load-mem-btn" title="Voice input">🎙️</button>
+                <button id="askClientBtn" type="button" class="mfd-ask-send">Ask</button>
+              </div>
+              <div id="askClientResult" class="hidden"></div>
+            </div>
+
+            <div id="memoryContent">
+              <div class="empty-state" style="grid-column:1/-1;">Select a client to view instant context.</div>
+            </div>
+          </div>
+
+          <!-- Commitments panel -->
+          <div class="mfd-mem-card sidebar-tab-content hidden" id="commitmentPanel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <h4 style="margin:0;color:var(--mfd-txt);">📋 Commitments</h4>
+              <select id="commitmentFilter" style="background:var(--mfd-panel2);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:8px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;">
+                <option value="">All</option>
+                <option value="pending" selected>Pending</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="mfd-commit-table">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Commitment</th>
+                    <th>Due</th>
+                    <th>Urgency</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="commitmentRows">
+                  <tr><td colspan="6"><div class="empty-state">No commitments loaded.</div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team Performance (owner/admin only) -->
+        <section id="teamPerformanceSection" class="mfd-card" id="mfdTeamSection" style="display:none;margin-bottom:18px;">
+          <h4 style="margin:0 0 4px;color:var(--mfd-txt);">📊 Team Performance Overview</h4>
+          <div class="mfd-sub">Per-advisor workload — who owns what, who's behind</div>
+          <div style="overflow-x:auto;">
+            <table class="mfd-team-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Clients Owned</th>
+                  <th>Meetings Logged</th>
+                  <th style="min-width:200px;">Commitment Progress</th>
+                </tr>
+              </thead>
+              <tbody id="teamPerformanceBody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        </div><!-- end memory tab -->
+
+      </div><!-- end mfdDashboard -->
+      </main>
+    </div><!-- end mfd-main-col -->
+  </div><!-- end mfd-layout -->
+
+  <!-- ===== PERSISTENT COPILOT SIDECAR ===== -->
+  <aside class="copilot-sidecar" id="copilotSidecar" aria-label="Portfolio AI Copilot Sidecar" style="display:none;position:fixed;right:0;top:57px;width:360px;height:calc(100vh - 57px);background:var(--mfd-panel);border-left:1px solid var(--mfd-line);z-index:200;display:flex;flex-direction:column;">
+    <div style="padding:16px;border-bottom:1px solid var(--mfd-line);display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:28px;height:28px;background:var(--mfd-teal);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#04211d;font-weight:800;">✨</div>
+        <span style="font-weight:600;color:var(--mfd-txt);">Philixa Copilot</span>
+      </div>
+      <button id="closeCopilotBtn" type="button" title="Close Sidecar" style="background:transparent;border:none;color:var(--mfd-mut);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1;">&times;</button>
+    </div>
+    <div style="padding:10px 14px;border-bottom:1px solid var(--mfd-line);font-size:12px;color:var(--mfd-mut);display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div>👤 Grounded: <strong id="copilotGroundedClient" style="color:var(--mfd-txt);">All Portfolio Clients</strong></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+        <span id="copilotTokenText">1,420 / 8,192</span>
+        <div style="width:60px;height:4px;background:var(--mfd-line);border-radius:2px;overflow:hidden;">
+          <div id="copilotTokenFill" style="width:17%;height:100%;background:var(--mfd-teal);transition:width .3s;"></div>
+        </div>
+      </div>
+    </div>
+    <div id="copilotMessages" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;">
+      <div style="background:rgba(20,184,166,.1);border:1px solid rgba(20,184,166,.2);border-radius:10px;padding:12px;font-size:13px;color:var(--mfd-txt);line-height:1.5;">
+        Hello! I'm your Portfolio Copilot. Ask me about meetings, client sentiments, commitments, or risks.
+      </div>
+    </div>
+    <div style="padding:12px;border-top:1px solid var(--mfd-line);display:flex;gap:8px;">
+      <input type="text" id="copilotInput" placeholder="Ask Copilot about your portfolio... (Enter)" autocomplete="off" style="flex:1;background:var(--mfd-panel2);border:1px solid var(--mfd-line);color:var(--mfd-txt);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;outline:none;" />
+      <button id="sendCopilotBtn" type="button" style="background:var(--mfd-teal);border:none;color:#04211d;border-radius:10px;padding:10px 14px;cursor:pointer;">
+        <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===== TOAST ===== -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- ===== AUTH MODAL ===== -->
+  <div id="authModal" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-split-container">
+      <!-- Left: Marketing -->
+      <div class="auth-left-panel">
+        <div class="auth-brand">
+          <div class="brand-mark-large">P6</div>
+          <span class="brand-name">PHILIXA 6.0</span>
+        </div>
+        <div class="auth-copy">
+          <div class="auth-badge">Now AI-ready ✨</div>
+          <h1>Your business.<br>One conversation.</h1>
+          <ul class="auth-benefits">
+            <li><span class="check-icon">✓</span> Stock aur hisab poochho</li>
+            <li><span class="check-icon">✓</span> Daily kaam aur entries bolo</li>
+            <li><span class="check-icon">✓</span> Hindi, Hinglish, or English</li>
+          </ul>
+        </div>
+        <div class="auth-preview-image" hidden>
+          <img src="/static/premium_dashboard.jpg" alt="Philixa UI Preview" />
+        </div>
+      </div>
+
+      <!-- Right: Auth form -->
+      <div class="auth-right-panel">
+        <div class="auth-card">
+          <div class="auth-card-header">
+            <h2 id="authTitle">Sign in to Philixa</h2>
+            <p id="authSubtitle">Welcome back! Please enter your details.</p>
+          </div>
+          <div class="auth-card-body">
+
+            <!-- View 1: Login -->
+            <div id="viewLogin" class="auth-view">
+              <div id="loginError" class="alert-box error hidden"></div>
+              <div id="g_id_onload"
+                   data-client_id="401674766048-lofabuacl8s0f91siit3uh5glptfe7jt.apps.googleusercontent.com"
+                   data-context="signin" data-ux_mode="popup"
+                   data-callback="handleGoogleCredentialResponse" data-auto_prompt="false">
+              </div>
+              <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline"
+                   data-text="signin_with" data-size="large" data-logo_alignment="left"
+                   style="display:flex;justify-content:center;margin-bottom:24px;"></div>
+              <div style="display:flex;align-items:center;text-align:center;margin-bottom:20px;color:#cbd5e1;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">
+                <hr style="flex:1;border:none;border-top:1px solid rgba(255,255,255,.15);">
+                <span style="padding:0 14px;white-space:nowrap;">or sign in with email</span>
+                <hr style="flex:1;border:none;border-top:1px solid rgba(255,255,255,.15);">
+              </div>
+              <form id="loginForm">
+                <div class="form-group">
+                  <label for="loginEmail">Work Email</label>
+                  <input id="loginEmail" type="email" required autocomplete="username" placeholder="name@company.com" />
+                </div>
+                <div class="form-group">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <label for="loginPassword">Password</label>
+                    <a id="linkToForgotPassword" style="font-size:12px;color:#5eead4;cursor:pointer;font-weight:600;text-decoration:none;">Forgot password?</a>
+                  </div>
+                  <input id="loginPassword" type="password" required autocomplete="current-password" placeholder="••••••••" />
+                </div>
+                <button id="loginSubmitBtn" type="submit" class="primary-action">Sign In</button>
+                <button id="demoLoginBtn" type="button" class="secondary-action">🎯 Try Demo</button>
+              </form>
+              <div class="auth-footer-links">
+                <div>Don't have an account? <a id="linkToRegister">Create workspace</a></div>
+                <div><a id="linkToVerifyEmail">Verify 6-digit OTP</a></div>
+              </div>
+            </div>
+
+            <!-- View 2: Register -->
+            <div id="viewRegister" class="auth-view hidden">
+              <div id="registerError" class="alert-box error hidden"></div>
+              <form id="registerForm">
+                <div class="form-group">
+                  <label>Workspace Type</label>
+                  <div class="segmented-control">
+                    <label id="labelTypeCompany" class="active">
+                      <input type="radio" name="workspaceType" id="typeCompany" value="company" checked />
+                      <span>🏢 Company</span>
+                    </label>
+                    <label id="labelTypeIndividual">
+                      <input type="radio" name="workspaceType" id="typeIndividual" value="individual" />
+                      <span>👤 Individual</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="registerWorkspaceName">Workspace Name</label>
+                  <input id="registerWorkspaceName" type="text" required placeholder="e.g. Acme Capital or Sarah's Workspace" />
+                </div>
+                <div class="form-group">
+                  <label for="registerEmail">Work Email</label>
+                  <input id="registerEmail" type="email" required autocomplete="email" placeholder="name@company.com" />
+                </div>
+                <div class="form-group">
+                  <label for="registerPassword">Password</label>
+                  <input id="registerPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Min 8 characters" />
+                </div>
+                <button id="registerSubmitBtn" type="submit" class="primary-action">Create Account &amp; Workspace</button>
+              </form>
+              <div class="auth-footer-links">
+                <div>Already have an account? <a id="linkToLoginFromRegister">Sign in</a></div>
+              </div>
+            </div>
+
+            <!-- View 3: Verify Email -->
+            <div id="viewVerifyEmail" class="auth-view hidden">
+              <div id="verifyMessage" class="alert-box hidden"></div>
+              <div style="text-align:center;margin-bottom:16px;">
+                <span style="font-size:36px;display:block;margin-bottom:8px;">📧</span>
+                <p style="font-size:14px;color:#cbd5e1;margin:0;">We sent a 6-digit OTP to <strong id="verifyEmailDisplay" style="color:#fff;">your email</strong>.</p>
+              </div>
+              <form id="verifyEmailForm">
+                <div class="form-group">
+                  <label for="verifyTokenInput">6-Digit OTP</label>
+                  <input id="verifyTokenInput" type="text" required placeholder="123456" maxlength="6" style="text-align:center;letter-spacing:4px;font-size:18px;" />
+                </div>
+                <button id="verifyTokenSubmitBtn" type="submit" class="primary-action">Verify OTP</button>
+              </form>
+              <div class="auth-footer-links">
+                <div><a id="linkToLoginFromVerify">Back to Sign In</a></div>
+              </div>
+            </div>
+
+            <!-- View 4: Forgot Password -->
+            <div id="viewForgotPassword" class="auth-view hidden">
+              <div id="forgotPasswordMessage" class="alert-box hidden"></div>
+              <form id="forgotPasswordForm">
+                <div class="form-group">
+                  <label for="forgotPasswordEmail">Account Email</label>
+                  <input id="forgotPasswordEmail" type="email" required placeholder="name@company.com" />
+                </div>
+                <button id="forgotPasswordSubmitBtn" type="submit" class="primary-action">Send Reset Token</button>
+              </form>
+              <div class="auth-footer-links">
+                <div><a id="linkToResetWithToken">Already have a token? Reset password</a></div>
+                <div><a id="linkToLoginFromForgot">Back to Sign In</a></div>
+              </div>
+            </div>
+
+            <!-- View 5: Reset Password -->
+            <div id="viewResetPassword" class="auth-view hidden">
+              <div id="resetPasswordMessage" class="alert-box hidden"></div>
+              <form id="resetPasswordForm">
+                <div class="form-group">
+                  <label for="resetTokenInput">Reset Token</label>
+                  <input id="resetTokenInput" type="text" required placeholder="Paste reset token here..." />
+                </div>
+                <div class="form-group">
+                  <label for="resetNewPassword">New Password</label>
+                  <input id="resetNewPassword" type="password" required minlength="8" placeholder="New password (min 8 chars)" />
+                </div>
+                <div class="form-group">
+                  <label for="resetConfirmPassword">Confirm New Password</label>
+                  <input id="resetConfirmPassword" type="password" required minlength="8" placeholder="Confirm new password" />
+                </div>
+                <button id="resetPasswordSubmitBtn" type="submit" class="primary-action">Update Password</button>
+              </form>
+              <div class="auth-footer-links">
+                <div><a id="linkToLoginFromReset">Back to Sign In</a></div>
+              </div>
+            </div>
+
+            <!-- View 6: Accept Invite -->
+            <div id="viewInviteAccept" class="auth-view hidden">
+              <div id="inviteAcceptMessage" class="alert-box hidden"></div>
+              <div style="text-align:center;margin-bottom:16px;">
+                <span style="font-size:36px;display:block;margin-bottom:8px;">🤝</span>
+                <p style="font-size:14px;color:#cbd5e1;margin:0;">You have been invited to collaborate in a Philixa workspace.</p>
+              </div>
+              <form id="acceptInviteForm">
+                <div class="form-group">
+                  <label for="inviteTokenInput">Invitation Token</label>
+                  <input type="text" id="inviteTokenInput" required />
+                </div>
+                <div class="form-group" id="invitePasswordFieldGroup">
+                  <label for="invitePasswordInput">Set Password (to create account)</label>
+                  <input type="password" id="invitePasswordInput" placeholder="Leave blank if you already have an account" />
+                </div>
+                <button type="submit" id="inviteAcceptSubmitBtn" class="primary-action">Join Workspace</button>
+              </form>
+              <div class="auth-footer-links">
+                <div><a id="linkToLoginFromInvite">Sign in with different account</a></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MEMBER MANAGEMENT MODAL ===== -->
+  <div id="memberModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="memberModalTitle">
+    <div class="modal-content members-modal-content">
+      <div class="modal-header">
+        <h3 id="memberModalTitle" style="display:flex;align-items:center;gap:8px;">
+          Workspace Members <span id="memberModalOrgName" class="badge" style="font-size:12px;font-weight:normal;"></span>
+        </h3>
+        <button id="closeMemberModalBtn" class="close-btn" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="inviteSection" class="invite-box" data-min-role="admin">
+          <p class="eyebrow" style="margin-bottom:10px;">Invite New Member</p>
+          <div id="inviteResultMsg" class="alert-box hidden"></div>
+          <form id="inviteMemberForm">
+            <div class="invite-form-row">
+              <div class="form-group" style="margin:0;">
+                <label for="inviteMemberEmail">User Email</label>
+                <input id="inviteMemberEmail" type="email" required placeholder="colleague@company.com" />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="inviteMemberRole">Role</label>
+                <select id="inviteMemberRole">
+                  <option value="member" selected>Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <button id="inviteMemberSubmitBtn" type="submit" class="primary-action" style="height:42px;align-self:end;">Send Invite</button>
+            </div>
+          </form>
+        </div>
+        <div>
+          <p class="eyebrow" style="margin-bottom:8px;">Active Members (<span id="memberCountBadge">0</span>)</p>
+          <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
+            <table class="members-table">
+              <thead>
+                <tr>
+                  <th>User / Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="memberListRows">
+                <tr><td colspan="5"><div class="empty-state">Loading members...</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS MODAL ===== -->
+  <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="settingsModalTitle">Notification Preferences</h3>
+        <button id="closeSettingsBtn" class="close-btn" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:normal;color:var(--mfd-txt);">
+            <input type="checkbox" id="prefOptIn" /> Enable Notifications (WhatsApp / Email)
+          </label>
+        </div>
+        <div class="form-row">
+          <label style="color:var(--mfd-txt);font-size:13px;font-weight:600;text-transform:none;">WhatsApp Number / Email Address
+            <input type="text" id="prefContact" placeholder="+919876543210 or user@example.com" style="margin-top:6px;" />
+          </label>
+        </div>
+        <div style="display:flex;gap:14px;margin-bottom:20px;">
+          <label style="flex:1;color:var(--mfd-txt);font-size:13px;font-weight:600;text-transform:none;">Quiet Hours Start
+            <input type="time" id="prefQuietStart" style="margin-top:6px;width:100%;" />
+          </label>
+          <label style="flex:1;color:var(--mfd-txt);font-size:13px;font-weight:600;text-transform:none;">Quiet Hours End
+            <input type="time" id="prefQuietEnd" style="margin-top:6px;width:100%;" />
+          </label>
+        </div>
+        <button id="saveSettingsBtn" type="button" class="primary-action" style="width:100%;justify-content:center;margin-bottom:20px;">Save Preferences</button>
+        <hr style="border:0;border-top:1px solid var(--mfd-line);margin:20px 0;">
+        <div>
+          <h4 style="color:#fca5a5;margin-bottom:10px;">Danger Zone</h4>
+          <p style="font-size:13px;color:var(--mfd-mut);margin-bottom:14px;">Permanently delete your account and all associated personal data. This action cannot be undone.</p>
+          <button id="deleteAccountBtn" type="button" class="btn" style="width:100%;background:rgba(239,68,68,.1);color:#fca5a5;border-color:rgba(239,68,68,.3);">Permanently Delete Account</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CLIENT PROFILE MODAL ===== -->
+  <div id="clientProfileModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="clientProfileModalTitle">
+    <div class="modal-content" style="max-width:600px;">
+      <div class="modal-header">
+        <h3 id="clientProfileModalTitle">Client Profile</h3>
+        <button id="closeClientProfileBtn" class="close-btn" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom:20px;">
+          <h4 style="margin-bottom:10px;color:var(--mfd-txt);border-bottom:1px solid var(--mfd-line);padding-bottom:5px;">Contact Info</h4>
+          <div class="form-row">
+            <label style="color:var(--mfd-txt);font-size:13px;font-weight:600;text-transform:none;">WhatsApp Number
+              <input type="text" id="profileWhatsapp" placeholder="+919876543210" style="margin-top:6px;width:100%;" />
+            </label>
+          </div>
+          <div class="form-row">
+            <label style="color:var(--mfd-txt);font-size:13px;font-weight:600;text-transform:none;">Email Address
+              <input type="email" id="profileEmail" placeholder="client@example.com" style="margin-top:6px;width:100%;" />
+            </label>
+          </div>
+          <button id="saveClientContactBtn" type="button" class="btn" style="width:100%;">Save Contact Info</button>
+          <div id="profileContactMsg" class="alert-box hidden" style="margin-top:10px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom:10px;color:var(--mfd-txt);border-bottom:1px solid var(--mfd-line);padding-bottom:5px;">Communication History</h4>
+          <div id="communicationFeed" class="communication-feed" style="max-height:300px;overflow-y:auto;">
+            <div class="empty-state">Loading history...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== APPLICATION SCRIPTS ===== -->
+  <link rel="stylesheet" href="/static/business-chat.css?v=12" />
+  <script src="/static/app.js?v=49"></script>
+  <script src="/static/fast-dictation.js?v=2"></script>
+  <script src="/static/philixa-voice.js?v=38"></script>
+  <script>
+    // ===== BRIDGE: Map new UI to original app.js expected structure =====
+
+    // 1. app.js uses .app-shell for sidebar collapse — keep compatible
+    // Also expose dashboardMainContent alias so app.js revealApp() works
+    window.__mfdBridge = true;
+
+    // 2. Override revealApp to show mfdDashboard instead of dashboardMainContent
+    const _origRevealApp = window.revealApp;
+    window.revealApp = function() {
+      if (_origRevealApp) _origRevealApp();
+
+      // Hide loader, show dashboard
+      const loader = document.getElementById('mfdContentLoader');
+      const dash = document.getElementById('mfdDashboard');
+      if (loader) loader.style.display = 'none';
+      if (dash) dash.style.display = 'block';
+
+      // Update sidebar user info
+      if (window.authState && authState.user) {
+        const rawName = authState.user.name || authState.user.display_name || authState.user.email.split('@')[0];
+        const name = rawName.replace(/[_.-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const firstName = name.split(' ')[0];
+        const hour = new Date().getHours();
+        const sal = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+        const greetEl = document.getElementById('mfdGreetingName');
+        if (greetEl) greetEl.textContent = `${sal}, ${firstName} 👋`;
+
+        const sidebarUser = document.getElementById('sidebarUserName');
+        if (sidebarUser) {
+          const initials = name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+          sidebarUser.textContent = `${initials} · ${firstName}`;
+          // Also update avatar button
+          const avatarBtn = document.getElementById('avatarBtn');
+          if (avatarBtn) avatarBtn.textContent = initials || name.charAt(0).toUpperCase();
+        }
+
+        const sidebarPlan = document.getElementById('sidebarPlan');
+        if (sidebarPlan && authState.activeOrganization) {
+          const plan = authState.activeOrganization.plan || 'free';
+          sidebarPlan.textContent = `${plan.charAt(0).toUpperCase() + plan.slice(1)} plan`;
+        }
+      }
+    };
+
+    // 3. app.js uses #dashboardMainContent — create a shim so it doesn't error
+    // The actual display is controlled via mfdDashboard
+    if (!document.getElementById('dashboardMainContent')) {
+      const shim = document.createElement('div');
+      shim.id = 'dashboardMainContent';
+      shim.style.display = 'none';
+      document.body.appendChild(shim);
+    }
+
+    // 4. Tab switching for intake (Paste Notes / Upload Audio / Live Record / Fast Dictation)
+    (function() {
+      const tabIds = ['tabTextBtn', 'tabAudioBtn', 'tabLiveBtn', 'tabFastDictationBtn'];
+      const viewIds = ['viewText', 'viewAudio', 'viewLive', 'viewFastDictation'];
+      tabIds.forEach((tabId, i) => {
+        const btn = document.getElementById(tabId);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+          tabIds.forEach(id => document.getElementById(id)?.classList.remove('active'));
+          viewIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('hidden');
+          });
+          btn.classList.add('active');
+          const view = document.getElementById(viewIds[i]);
+          if (view) view.classList.remove('hidden');
+        });
+      });
+    })();
+
+    // 5. Sidebar tab switching (Client Memory / Commitments)
+    document.addEventListener('click', (e) => {
+      const tabBtn = e.target.closest('.sidebar-tab-btn');
+      if (!tabBtn) return;
+
+      document.querySelectorAll('.sidebar-tab-btn').forEach(b => b.classList.remove('active'));
+      tabBtn.classList.add('active');
+
+      document.querySelectorAll('.sidebar-tab-content').forEach(c => c.classList.add('hidden'));
+      const targetId = tabBtn.getAttribute('data-tab-target');
+      const target = document.getElementById(targetId);
+      if (target) target.classList.remove('hidden');
+
+      if (typeof updateMetrics === 'function') updateMetrics();
+    });
+
+    // 6. Accordion toggle (e.g. "View Detailed History" in client memory)
+    document.addEventListener('click', (e) => {
+      const toggle = e.target.closest('.accordion-toggle');
+      if (!toggle) return;
+      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
+      const targetId = toggle.getAttribute('data-target');
+      if (targetId) {
+        const content = document.getElementById(targetId);
+        if (content) {
+          content.classList.toggle('collapsed');
+          toggle.classList.toggle('collapsed');
+        }
+      }
+    });
+
+    // 7. "Client memory ▾" toggle button — collapse/expand memoryContent
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mfd-mem-toggle');
+      if (!btn) return;
+      const content = document.getElementById('memoryContent');
+      const cv = btn.querySelector('.cv');
+      if (!content) return;
+      const isHidden = content.style.display === 'none';
+      content.style.display = isHidden ? '' : 'none';
+      if (cv) cv.textContent = isHidden ? '▾' : '▸';
+    });
+
+    // Sidebar toggle is handled by app.js
+
+    // 6. Philixa Voice Btn (Hero Mic) — triggers same flow as original philixaVoiceBtn
+    // philixa-voice.js already listens for #philixaVoiceBtn clicks — the new mic has same ID so it works automatically
+
+    // 7. Copy workspace select value to sidebar mirror
+    const wsMain = document.getElementById('workspaceSelect');
+    const wsSidebar = document.getElementById('workspaceSelectSidebar');
+    if (wsMain && wsSidebar) {
+      wsMain.addEventListener('change', () => { wsSidebar.value = wsMain.value; });
+    }
+
+    // 8. copilotSidecar — re-show when copilot btn clicked (app.js toggles hidden class)
+    const copilotSidecar = document.getElementById('copilotSidecar');
+    if (copilotSidecar) copilotSidecar.style.display = ''; // reset inline style, let JS control
+
+    // 9. Mobile backdrop compat (app.js may try to find this)
+    if (!document.getElementById('mobileSidebarBackdrop')) {
+      const bd = document.createElement('div');
+      bd.id = 'mobileSidebarBackdrop';
+      bd.style.display = 'none';
+      document.body.appendChild(bd);
+    }
+  </script>
+  <script src="/static/business-voice.js?v=1"></script><script src="/static/business-tally.js?v=22"></script><script src="/static/business-chat-store.js?v=3"></script><script src="/static/business-chat.js?v=12"></script><script src="/static/business-drafts.js?v=5"></script><script src="/static/business-documents.js?v=3"></script>
+</body>
+</html>

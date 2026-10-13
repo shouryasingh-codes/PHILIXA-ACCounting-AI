@@ -1,0 +1,24 @@
+const assert=require('assert'),h=require('./test_purchase_drafts_ui.cjs');
+(async()=>{
+ h.reset();let p=h.page();p.get('businessDraftsBtn').listeners.click();await h.flush();
+ p.get('billDraftCompany').value='company';p.inputs.party_name.value='Supplier';p.inputs.invoice_number.value='GST-1';p.inputs.entry_date.value='2026-10-01';
+ p.inputs.tax_treatment.value='regular_domestic_goods';await p.inputs.tax_treatment.listeners.change();await h.flush();
+ assert.equal(p.get('billDraftTaxFields').hidden,false);assert.equal(p.get('billDraftTaxLedgers').children.length,4);
+ p.inputs.supplier_gstin.value='06ABCDE1234F1ZQ';p.inputs.place_of_supply.value='06';p.inputs.invoice_total.value='1180';
+ let box=p.get('billDraftLines').children[0];const keys=['item_name','quantity','unit','rate','discount_amount','discount_percent','gst_rate','hsn','taxable_amount'];
+ const fields=Object.fromEntries(keys.map((key,i)=>[key,box.children[i+1].children[0]]));
+ Object.assign(fields.item_name,{value:'Cement'});fields.quantity.value='10';fields.unit.value='bags';fields.rate.value='100';fields.gst_rate.value='18';fields.hsn.value='2523';fields.taxable_amount.value='1000';
+ const taxInputs=p.get('billDraftExpectedTaxes').children.map(c=>c.children[0]);taxInputs[0].value='90';taxInputs[1].value='90';
+ await p.get('billDraftSaveTaxProfile').listeners.click();await h.flush();
+ assert.ok(h.getRequests().some(r=>r.url.endsWith('/tax-profile')&&r.options.method==='PUT'));
+ await p.get('billDraftForm').listeners.submit({preventDefault(){}});await h.flush();
+ let saved=h.getRecord();assert.equal(saved.content.tax_treatment,'regular_domestic_goods');assert.deepEqual(saved.content.expected_taxes,{CGST:'90',SGST:'90'});assert.equal(saved.content.lines[0].gst_rate,'18');
+ await p.get('billDraftTaxCheck').listeners.click();await h.flush();assert.match(p.get('billDraftTaxResult').textContent,/1180.00/);
+ await p.get('billDraftMakePreview').listeners.click();await h.flush();
+ assert.equal(h.getRecord().status,'preview');assert.ok(p.get('billDraftPreview').children.every(c=>c.textContent!=='Confirm & save to Tally'));
+ assert.equal(h.getRequests().filter(r=>r.url.endsWith('/confirm')).length,0);
+ p.get('businessDrafts').close();p=h.page();p.get('businessDraftsBtn').listeners.click();await h.flush();await p.get('billDraftList').children[0].listeners.click();await h.flush();
+ assert.equal(p.inputs.supplier_gstin.value,'06ABCDE1234F1ZQ');assert.equal(p.inputs.tax_treatment.value,'regular_domestic_goods');
+ assert.equal(p.get('billDraftExpectedTaxes').children[0].children[0].value,'90');
+ console.log('PASS: GST fields persist/reopen, company ledger setup, saved tax calculation, and locked preview cannot confirm');
+})().catch(error=>{console.error(error);process.exitCode=1;});

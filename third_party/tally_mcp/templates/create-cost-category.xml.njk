@@ -1,0 +1,19 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <COSTCATEGORY NAME="{{ name }}" ACTION="Create">
+            <NAME>{{ name }}</NAME>
+            <ALLOCATESTOREVENUE>{{ "Yes" if allocateToRevenue else "No" }}</ALLOCATESTOREVENUE>
+            <ALLOCATESTONONREVENUE>{{ "Yes" if allocateToNonRevenue else "No" }}</ALLOCATESTONONREVENUE>
+          </COSTCATEGORY>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

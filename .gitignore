@@ -1,0 +1,43 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.env.*
+*.pyc
+data/
+tmp/
+*.wav
+*.webm
+.agents/
+
+# Virtual environment builds
+.helper-build/
+
+# Screenshots / test media
+screenshots/
+
+# Supplier test artifacts
+.supplier-tests/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# AI Planning / Scratch docs (never commit these)
+*_fixes*.md
+*_plan*.md
+*_checklist*.md
+*_report*.md
+*_summary*.md
+resume*.html
+resume*.md
+
+# Audio / media temp files
+*.mp3
+*.m4a
+node_modules/
+integration/tally_mcp/src/
+integration/tally_mcp/dist/
+integration/tally_mcp/templates/
+integration/tally_mcp/tsconfig.json

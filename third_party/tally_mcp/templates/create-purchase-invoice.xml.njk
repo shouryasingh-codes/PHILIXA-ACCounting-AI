@@ -1,0 +1,72 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Purchase" ACTION="Create" OBJVIEW="Invoice Voucher View">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+            <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
+            <ISINVOICE>Yes</ISINVOICE>
+            {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
+            {% if reference %}<REFERENCE>{{ reference }}</REFERENCE>{% endif %}
+            {% if referenceDate %}<REFERENCEDATE>{{ referenceDate }}</REFERENCEDATE>{% endif %}
+            <NARRATION>{{ narration }}</NARRATION>
+            <PARTYNAME>{{ partyLedger }}</PARTYNAME>
+            <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
+            {% if supplierTrn %}<TRADERCONSVATTINNO>{{ supplierTrn }}</TRADERCONSVATTINNO>{% endif %}
+            {% if buyerTrn %}<BASICBUYERSSALESTAXNO>{{ buyerTrn }}</BASICBUYERSSALESTAXNO>{% endif %}
+            {% if buyerState %}<STATENAME>{{ buyerState }}</STATENAME>{% endif %}
+            {% if buyerCountry %}<COUNTRYOFRESIDENCE>{{ buyerCountry }}</COUNTRYOFRESIDENCE>{% endif %}
+            {% if placeOfSupplyEmirate %}<EMIRATEPOS>{{ placeOfSupplyEmirate }}</EMIRATEPOS>{% endif %}
+            {% if placeOfSupplyCountry %}<PLACEOFSUPPLYCOUNTRY>{{ placeOfSupplyCountry }}</PLACEOFSUPPLYCOUNTRY>{% endif %}
+            {% for item in items %}<ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
+              {% if item.discountPercent %}<DISCOUNT>{{ item.discountPercent }}</DISCOUNT>{% endif %}
+              <AMOUNT>-{{ item.amount }}</AMOUNT>
+              <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
+              <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              {% if item.godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ item.godown }}</GODOWNNAME>
+                <BATCHNAME>{{ item.batchName }}</BATCHNAME>
+                <AMOUNT>-{{ item.amount }}</AMOUNT>
+                <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
+                <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>{% endif %}
+              <ACCOUNTINGALLOCATIONS.LIST>
+                <LEDGERNAME>{{ item.purchaseLedger }}</LEDGERNAME>
+                <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+                <AMOUNT>-{{ item.amount }}</AMOUNT>
+              </ACCOUNTINGALLOCATIONS.LIST>
+            </ALLINVENTORYENTRIES.LIST>
+            {% endfor %}<LEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ partyLedger }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <AMOUNT>{{ partyAmount }}</AMOUNT>
+              {% if billName %}<BILLALLOCATIONS.LIST>
+                <NAME>{{ billName }}</NAME>
+                <BILLTYPE>{{ billType }}</BILLTYPE>
+                <AMOUNT>{{ partyAmount }}</AMOUNT>
+              </BILLALLOCATIONS.LIST>{% endif %}
+            </LEDGERENTRIES.LIST>
+            {% for group in taxGroups %}<LEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ group.vatLedger }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-{{ group.vatAmount }}</AMOUNT>
+              <RATEOFINVOICETAX.LIST TYPE="Number"><RATEOFINVOICETAX> {{ group.vatRatePercent }}</RATEOFINVOICETAX></RATEOFINVOICETAX.LIST>
+              <VATEXPAMOUNT>{{ group.vatAmount }}</VATEXPAMOUNT>
+            </LEDGERENTRIES.LIST>
+            {% endfor %}
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

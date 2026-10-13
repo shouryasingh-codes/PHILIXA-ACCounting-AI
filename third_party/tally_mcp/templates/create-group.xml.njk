@@ -1,0 +1,22 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          {% if oldName %}
+          <GROUP NAME="{{ oldName }}" ACTION="Alter">
+          {% else %}
+          <GROUP NAME="{{ name }}" ACTION="Create">
+          {% endif %}
+            <NAME>{{ name }}</NAME>
+            <PARENT>{{ parent }}</PARENT>
+          </GROUP>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

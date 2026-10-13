@@ -1,0 +1,19 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <COSTCENTRE NAME="{{ name }}" ACTION="Create">
+            <NAME>{{ name }}</NAME>
+            {% if category %}<CATEGORY>{{ category }}</CATEGORY>{% endif %}
+            {% if parent %}<PARENT>{{ parent }}</PARENT>{% endif %}
+          </COSTCENTRE>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

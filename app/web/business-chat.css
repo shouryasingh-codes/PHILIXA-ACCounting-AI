@@ -1,0 +1,195 @@
+/* The business chat replaces the visible CRM shell; its auth controls stay mounted. */
+#appShell, #copilotSidecar { display: none !important; }
+body { margin: 0; background: #fff; }
+.business-app { --bc-text:#202623; --bc-muted:#77817b; --bc-line:#e8ece9; --bc-accent:#28684d; display:flex; height:100dvh; min-height:480px; color:var(--bc-text); background:#fff; font-family:Inter,system-ui,sans-serif; }
+.business-app *, .business-dialog * { box-sizing:border-box; }
+.business-app button, .business-dialog button { font:inherit; cursor:pointer; }
+.business-app button:focus-visible,.business-app a:focus-visible,.business-dialog button:focus-visible { outline:3px solid #89bba2; outline-offset:4px; }
+.business-sidebar { width:248px; flex-shrink:0; background:#f5f6f4; border-right:1px solid var(--bc-line); padding:30px 20px 20px; display:flex; flex-direction:column; }
+.business-brand { display:flex; align-items:center; gap:9px; color:#202623; text-decoration:none; font-size:25px; font-weight:650; letter-spacing:-1px; margin:0 6px 35px; }
+.business-mark { width:30px;height:30px;background:#28684d;color:white;border-radius:10px;text-align:center;line-height:28px;font-size:25px;font-weight:500; }
+.business-brand-dot { color:#28684d;margin-left:-9px; }
+.business-new { width:100%;border:1px solid #dce3de;background:#fff;border-radius:10px;padding:12px;text-align:left;font-size:13px!important;color:#273a2e;display:flex;gap:12px;align-items:center; }
+.business-new:hover { background:#edf3ef; }
+.business-new span { font-size:20px; }
+.business-nav-label { font-size:10px;letter-spacing:1.4px;color:#8a938d;margin:32px 8px 12px;font-weight:600; }
+#businessWorkspaceSlot select { width:100%;padding:10px 8px;background:transparent;border:0;color:#4b574f;font-size:12px;font-family:inherit; }
+.business-sidebar-note { margin:auto 8px 36px; }
+.business-chat-list { overflow-y:auto;min-height:60px;max-height:45vh;display:grid;gap:4px;margin-bottom:20px; }
+.business-chat-list button { border:0;border-radius:9px;background:transparent;padding:10px 9px;text-align:left;color:#4b574f;font:inherit;font-size:12px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.business-chat-list button:hover,.business-chat-list button[aria-current="true"] { background:#e5ede7;color:#234f39; }
+.business-chat-list .business-history-empty { font-size:11px;color:#8a938d;padding:8px; }
+.business-note-icon { font-size:28px;color:#62957b;display:block;margin-bottom:13px; }
+.business-sidebar-note strong { font-size:13px;font-weight:500;line-height:1.8; }
+.business-sidebar-note p { font-size:12px;color:#7c867f;line-height:1.8;margin-top:7px; }
+.business-sidebar-bottom { display:grid;gap:8px;border-top:1px solid #dfe5e0;padding-top:15px; }
+.business-sidebar-bottom button { text-align:left;background:none;border:0;padding:8px;color:#626d66;font-size:12px; }
+.business-sidebar-bottom button span { float:right; }
+.business-main { flex:1;min-width:0;display:flex;flex-direction:column; }
+.business-header { display:flex;justify-content:space-between;align-items:center;padding:24px 34px;gap:12px;flex-shrink:0; }
+.business-header>div { display:flex;align-items:center;gap:10px; }
+.business-header-name { font-size:14px;font-weight:500;color:#505a53; }
+.business-preview { font-size:10px;color:#7b847e;border:1px solid #e5e9e6;border-radius:5px;padding:3px 6px; }
+.business-mobile-brand { display:none; }
+.business-connection { border:1px solid #e7ebe8;border-radius:20px;padding:8px 12px;background:white;color:#737e76;font-size:11px!important;display:flex;align-items:center;gap:7px; }
+.business-status-dot { width:6px;height:6px;background:#c5ab73;border-radius:50%; }
+.business-scroll { flex:1;overflow:auto;min-height:0; }
+.business-welcome { width:min(760px,100%);padding:32px 30px 20px;margin:auto; }
+.business-greeting { font-size:12px;color:#85918a;letter-spacing:.2px;margin-bottom:20px; }
+.business-welcome h1 { font-size:clamp(28px,3vw,42px);font-weight:500;letter-spacing:-1.8px;line-height:1.25;margin:0 0 18px;color:#25352b; }
+.business-welcome>p { font-size:15px;color:#7b867f;line-height:1.9;margin:0; }
+.business-prompts { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:28px; }
+.business-prompts button { position:relative;display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid #e6ebe7;border-radius:14px;padding:18px;background:#fff;transition:background .15s,border-color .15s; }
+.business-prompts button:hover { background:#f5f9f6;border-color:#b9d0c1; }
+.business-prompt-icon { color:#48765d;font-size:22px;margin-bottom:10px;line-height:1; }
+.business-prompts strong { font-size:13px;font-weight:550;margin-bottom:7px;color:#344338; }
+.business-prompts button>span:last-of-type { font-size:12px;color:#849087; }
+.business-prompts i { position:absolute;right:17px;top:17px;color:#a6b0a9;font-size:15px;font-style:normal; }
+.business-composer-wrap { width:min(820px,100%);padding:10px 30px 20px;align-self:center;flex-shrink:0; }
+.business-composer { border:1px solid #dfe5df;border-radius:22px;background:#f8faf8;padding:16px 18px 12px;box-shadow:0 3px 15px #253a2910; }
+.business-composer:focus-within { border-color:#abc5b5; }
+.business-composer textarea { display:block;width:100%;background:transparent;border:0!important;box-shadow:none!important;outline:none!important;resize:none;padding:0;min-height:30px;max-height:130px;color:#27352c;font:14px/1.7 Inter,system-ui,sans-serif; }
+.business-composer textarea::placeholder { color:#919a93; }
+/* Legacy dark-theme rules must not paint white text on these light surfaces. */
+#businessApp textarea, #businessApp input, #businessApp select {
+  color:#27352c!important;
+  -webkit-text-fill-color:#27352c!important;
+  caret-color:#27352c;
+  color-scheme:light;
+}
+#businessApp textarea::placeholder, #businessApp input::placeholder {
+  color:#919a93!important;
+  -webkit-text-fill-color:#919a93!important;
+  opacity:1;
+}
+.business-composer-bottom { display:flex;align-items:center;justify-content:space-between;margin-top:10px; }
+.business-composer-bottom>span { font-size:10px;color:#939d96; }
+.business-composer-bottom>div { display:flex;gap:8px; }
+.business-mic,.business-send { display:grid;place-items:center;width:36px;height:36px;border-radius:50%;border:0; }
+.business-mic { color:#53685b;background:transparent; }
+.business-mic:hover { background:#e8efe9; }
+.business-mic[aria-pressed="true"] { background:#fce4df;color:#a54432; }
+.business-send { background:#28684d;color:white; }
+.business-send:disabled { background:#e2e8e3;color:#a4b0a7;cursor:default; }
+.business-footnote { text-align:center;font-size:10px;color:#929b95;margin:12px 0 0;line-height:1.6; }
+.business-voice-status { color:#6e7b72;font-size:12px;min-height:16px;margin:0 8px 8px; }
+.business-messages { max-width:760px;margin:auto;padding:20px 30px; }
+.business-message { font-size:14px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 24px; }
+.business-message.user { margin-left:auto;max-width:85%;padding:12px 18px;border-radius:18px 18px 4px 18px;background:#f0f3ef;width:fit-content; }
+.business-message.assistant { padding-left:38px;position:relative; }
+.business-message.assistant::before { content:'p';position:absolute;left:0;top:3px;background:#eaf2ec;color:#28684d;width:25px;height:25px;line-height:23px;text-align:center;border-radius:8px;font-weight:600;font-size:18px; }
+.business-message button { display:block;margin-top:12px;border:1px solid #d5e3d9;border-radius:9px;background:#f3f8f4;color:#28684d;padding:8px 12px;font-size:12px; }
+.business-dialog { width:min(460px,calc(100% - 32px));border:1px solid #dce5de;border-radius:18px;padding:24px;background:#fff;color:#344338;font-family:Inter,system-ui,sans-serif;box-shadow:0 20px 80px #13261f30; }
+.business-dialog::backdrop { background:#182c2355; }
+.business-dialog-head { display:flex;justify-content:space-between;align-items:center;gap:12px; }
+.business-dialog h2 { font-size:19px;margin:0; }
+.business-dialog-head button { background:none;border:0;font-size:25px;color:#7b887f; }
+.business-dialog p { font-size:13px;line-height:1.8;color:#768379; }
+.business-software { padding:14px;margin:12px 0;border:1px solid #e5ebe6;border-radius:10px;display:grid;gap:6px; }
+.business-software strong { font-size:13px; }.business-software span { font-size:11px;color:#8b968e; }
+.business-dialog-note { font-size:11px!important; }.business-back { background:#28684d;color:white;border:0;border-radius:9px;padding:10px 15px;width:100%; }
+#businessConnections [hidden] { display:none!important; }
+.tally-link { display:block;background:transparent;border:0;color:#28684d;padding:12px 0;font:inherit;font-size:13px;cursor:pointer;text-align:left; }
+.tally-advanced { margin-top:18px;border-top:1px solid #e5ebe6;padding-top:14px;color:#768379;font-size:12px; }
+#tallyReadSetup .business-back { margin:8px 0; }
+#tallyReadSetup .business-tool-form { margin-top:12px; }
+.business-sr-only { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0); }
+.business-mobile-menu { display:none;background:none;border:0;color:#476652;font-size:20px!important; }
+.business-nav-backdrop { display:none; }
+.auth-left-panel { background:#f6f8f5!important;color:#273b2d!important; }.auth-left-panel h1,.auth-left-panel .brand-name { color:#273b2d!important; }.auth-benefits li { color:#718177!important; }.auth-preview-image[hidden] { display:none!important; }
+@media(max-width:700px) { .business-mobile-menu { display:block; } .business-app.nav-open .business-sidebar { display:flex;position:fixed;inset:0 auto 0 0;z-index:3501;width:248px;box-shadow:10px 0 40px #18332125; } .business-app.nav-open .business-nav-backdrop { display:block;position:fixed;inset:0;z-index:3500;border:0;background:#17332460; } }
+/* Keep sign-in simple and visually consistent with the chat. */
+.auth-overlay { background:#f6f8f5!important; }.auth-layout { max-width:1000px!important; }.auth-branding { color:#273b2d!important; }.auth-branding h1 { color:#273b2d!important; }.auth-branding p { color:#768379!important; }.auth-card { background:white!important;border:1px solid #e0e7e1!important;box-shadow:0 10px 40px #213b2710!important; }.auth-card h2 { color:#273b2d!important; }.auth-card label,.auth-card p { color:#738078!important; }.auth-card input { background:#f5f8f4!important;color:#273b2d!important;border:1px solid #dfe7df!important; }
+@media(max-width:1000px) { .business-sidebar{width:210px;padding:26px 16px;} .business-welcome{padding-top:44px;} }
+@media(max-width:700px) { .business-sidebar{display:none;} .business-header{padding:18px;} .business-mobile-brand{display:inline;font-size:20px;font-weight:650;color:#28684d;} .business-header-name{display:none;} .business-preview{font-size:9px;} .business-connection{font-size:9px!important;padding:7px 9px;} .business-welcome{padding:38px 22px 20px;} .business-welcome h1{font-size:30px;letter-spacing:-1px;} .business-welcome>p{font-size:14px;} .business-prompts{gap:10px;margin-top:28px;} .business-prompts button{padding:15px 12px;} .business-prompts strong{font-size:12px;} .business-prompts button>span:last-of-type{font-size:10px;line-height:1.5;} .business-composer-wrap{padding:8px 14px max(14px,env(safe-area-inset-bottom));} .business-messages{padding:20px;} .business-greeting{font-size:10px;} .business-app{min-height:0;} }
+@media(prefers-reduced-motion:reduce) { .business-prompts button { transition:none; } }
+
+.business-message audio { display:block; width:100%; max-width:320px; margin-top:12px; }
+.business-tool-nav {display:flex;gap:8px;margin:0 8px 9px;flex-wrap:wrap;}
+.business-tool-nav button,.business-tools button {border:1px solid #d8e3da;background:#f4f8f3;color:#28583c;border-radius:10px;padding:9px 12px;font:inherit;cursor:pointer;}
+.business-tools {display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:14px;}
+.business-tools:empty {display:none;}
+#businessConnections {max-height:90dvh;overflow-y:auto;box-sizing:border-box;max-width:calc(100vw - 24px);}
+#businessConnections input,#businessConnections select {color:#27352c!important;-webkit-text-fill-color:#27352c!important;color-scheme:light;}
+#businessConnections .tally-checkbox {display:flex;gap:8px;align-items:center;}
+#businessConnections .tally-checkbox input {width:auto;}
+#tallyConnectionStatus {white-space:pre-wrap;overflow-wrap:anywhere;}
+.business-preview-card,.business-task-card,.business-tool-form {width:100%;border:1px solid #dce4de;background:#fafcf9;border-radius:14px;padding:14px;white-space:normal;}
+.business-preview-card p,.business-task-card p {white-space:pre-wrap;margin:8px 0;overflow-wrap:anywhere;}
+.business-preview-card button {margin:6px 6px 0 0;}
+.business-tools button:disabled {opacity:.45;cursor:default;}
+.business-blocker {color:#94551b;font-size:13px;}
+.business-tool-form label {display:block;margin:8px 0;font-size:13px;}
+.business-tool-form input,.business-tool-form select {display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1px solid #cbd8ce;border-radius:8px;padding:10px;background:white;color:#24372a;font:inherit;}
+.business-prompts button {min-width:0;overflow-wrap:anywhere;}
+.business-prompts button>strong,.business-prompts button>span {max-width:100%;}
+.business-tool-nav {gap:6px;}
+.business-tool-nav button {font-size:12px;padding:8px 9px;}
+@media(max-width:400px) {
+  .business-header {padding:14px;gap:8px;}
+  .business-header .business-preview {display:none;}
+  .business-header>div {gap:6px;}
+  .business-connection {min-width:0;max-width:50%;}
+  .business-welcome {padding:22px 18px 18px;}
+  .business-welcome h1 {font-size:27px;}
+  .business-prompts {gap:8px;margin-top:18px;}
+  .business-prompts button {padding:12px 10px;}
+  .business-prompts strong {padding-right:12px;}
+}
+.bill-drafts-dialog {width:min(900px,95vw);max-height:90vh;overflow:auto;}
+.bill-drafts-actions {display:flex;gap:10px;margin:12px 0;}
+.bill-drafts-layout {display:grid;grid-template-columns:minmax(170px,1fr) minmax(240px,2fr);gap:20px;}
+#billDraftList {display:flex;flex-direction:column;gap:8px;max-height:65vh;overflow:auto;}
+#billDraftList button {text-align:left;overflow-wrap:anywhere;}
+#billDraftForm {display:grid;gap:10px;}
+#billDraftLines {display:grid;gap:12px;}
+#billDraftLines fieldset {min-width:0;border:1px solid #cdded6;border-radius:8px;padding:12px;display:grid;gap:8px;}
+#billDraftLines legend {font-size:13px;font-weight:600;}
+#billDraftTotal {font-weight:600;padding:8px 0;}
+#billDraftForm label {display:grid;gap:4px;}
+#billDraftForm input,#billDraftForm select {width:100%;padding:8px;border:1px solid #cdded6;border-radius:6px;}
+#businessDrafts button {padding:8px;border:1px solid #cdded6;border-radius:6px;background:#f5f9f6;color:#245747;cursor:pointer;}
+#businessDrafts button:disabled {opacity:.55;cursor:default;}
+#billDraftStatus {font-size:13px;}
+#billDraftAudit,#billDraftPreview {font-size:12px;overflow-wrap:anywhere;}
+@media(max-width:600px){.bill-drafts-layout {grid-template-columns:1fr;}#billDraftList {max-height:160px;}}
+.document-controls {display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
+.document-controls label {display:grid;gap:4px;}
+#businessDocuments button,#businessDocuments select {padding:8px;border:1px solid #cdded6;border-radius:6px;background:#f5f9f6;color:#245747;}
+#documentList {display:grid;gap:10px;align-content:start;}
+.document-card {border:1px solid #cdded6;border-radius:8px;padding:10px;overflow-wrap:anywhere;}
+.document-card p {margin:7px 0;}
+.document-card .doc-card-actions {display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+#documentViewer img {display:block;max-width:100%;height:auto;border:1px solid #dce5de;}
+#documentStatus {overflow-wrap:anywhere;}
+
+/* Day 4: Side-by-side source & draft view */
+.bill-drafts-dialog.side-by-side {width:min(1280px,96vw);}
+.bill-drafts-layout.has-doc {grid-template-columns:minmax(160px,1fr) minmax(320px,2fr) minmax(320px,2fr);gap:16px;}
+@media(max-width:960px){.bill-drafts-layout.has-doc {grid-template-columns:1fr;}}
+.draft-document-panel {border:1px solid #cdded6;border-radius:8px;padding:12px;background:#fafdff;display:flex;flex-direction:column;gap:8px;max-height:75vh;overflow:auto;}
+.draft-document-panel[hidden] {display:none !important;}
+.draft-doc-page-label {font-size:12px;font-weight:600;color:#2c5b4e;margin:0;}
+.draft-doc-viewer img {display:block;max-width:100%;height:auto;border:1px solid #b8d4c8;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,0.06);}
+
+/* Extraction Review Banner & Badges */
+.extraction-review-card {border:1px solid #f2c94c;background:#fffdf5;border-radius:8px;padding:12px;margin-bottom:12px;display:grid;gap:8px;}
+.extraction-review-card[hidden] {display:none !important;}
+.extraction-review-card.clean {border-color:#27ae60;background:#f6fbf7;}
+.review-badge-row {display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.badge-confidence {font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;background:#e8f4fd;color:#0b6399;border:1px solid #b7dcf8;}
+.badge-review {font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;background:#fef3d6;color:#8f6300;border:1px solid #f6db99;}
+.badge-verified {font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;background:#e6f8ec;color:#1e7e40;border:1px solid #b3e7c4;}
+.review-warnings-list {margin:0;padding-left:18px;font-size:12px;color:#a04000;display:grid;gap:4px;}
+.review-warnings-list li {overflow-wrap:anywhere;}
+.review-evidence-summary {font-size:12px;color:#335;background:#f4f6fa;border-radius:6px;padding:6px 10px;}
+.btn-split {background:#eef2ff !important;color:#3730a3 !important;border-color:#c7d2fe !important;font-weight:600;}
+.input-unclear {border-color:#e67e22 !important;background:#fffbf2 !important;}
+.line-warning-badge {font-size:11px;color:#c0392b;margin-top:2px;display:block;}
+
+
+#billDraftLines label[hidden], #billDraftTaxFields[hidden] { display: none !important; }
+#billDraftTaxFields { border: 1px solid #cdded5; border-radius: 10px; padding: 12px; margin-block: 12px; }
+#billDraftExpectedTaxes, #billDraftTaxLedgers { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+#billDraftTaxResult { display: block; margin-block: 8px; }
+@media(max-width:650px) { #billDraftExpectedTaxes, #billDraftTaxLedgers { grid-template-columns: 1fr; } }

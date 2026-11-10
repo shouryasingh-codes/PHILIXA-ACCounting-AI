@@ -177,9 +177,48 @@ async def state(db,principal,draft_id,prefix=''):
     missing=[v['message'] for v in issues if v['kind']=='missing']
     blockers=[v['message'] for v in issues if v['kind']=='blocked']
     message=[prefix] if prefix else []
-    message.extend(' · '.join(str(v) for v in [l.get('quantity'),l.get('unit'),l.get('item_name')] if v) for l in content['lines'])
-    if identity:message.append(identity['message'])
-    elif blockers:message.append(blockers[0])
+
+    supplier = (content.get('party_name') or '').strip()
+    total = content.get('invoice_total')
+    tot_str = f"₹{total}" if total and not str(total).startswith(('₹', 'Rs')) else (str(total) if total else '')
+    inv_num = content.get('invoice_number')
+    lines = content.get('lines', [])
+
+    if identity:
+        field = identity.get('field') or ''
+        if field == 'party_name':
+            if inv_num and tot_str:
+                message.append(f"Maine bill (Invoice: {inv_num}, Total: {tot_str}) check kar liya hai.")
+            elif tot_str:
+                message.append(f"Maine bill (Total: {tot_str}) check kar liya hai.")
+            else:
+                message.append("Maine bill check kar liya hai.")
+            if supplier and supplier != 'Supplier':
+                message.append(f"Lekin Tally me supplier '{supplier}' ka Sundry Creditor ledger nahi mila.\nKya main Tally me naya ledger bana doon, ya neeche diye kisi existing supplier se map karein?")
+            else:
+                message.append("Lekin Tally me supplier ka Sundry Creditor ledger nahi mila. Kis supplier se map karna hai ya naya ledger banayein?")
+        elif ':item_name' in field:
+            try:
+                idx = int(field.split(':')[0])
+                line = lines[idx] if idx < len(lines) else {}
+                item_name = line.get('item_name') or f"Item {idx+1}"
+                qty = line.get('quantity')
+                unit = line.get('unit') or ''
+                qty_str = f" ({qty} {unit})".strip() if qty else ""
+
+                if idx == 0 and len(lines) > 1:
+                    sup_prefix = f"{supplier} ka " if supplier and supplier != 'Supplier' else ""
+                    tot_prefix = f" (Total: {tot_str})" if tot_str else ""
+                    message.append(f"Maine {sup_prefix}bill{tot_prefix} check kar liya hai. Is bill ke {len(lines)} items Tally ke stock items me match nahi hue.")
+                    message.append(f"Item {idx+1} — '{item_name}'{qty_str} — ke liye Tally me kaunsa stock item select karein, ya naya item bana doon?")
+                else:
+                    message.append(f"Item {idx+1} — '{item_name}'{qty_str} — ke liye Tally me kaunsa stock item select karein, ya naya item bana doon?")
+            except (ValueError, IndexError):
+                message.append(identity.get('message') or 'Item identity check karein.')
+        else:
+            message.append(identity.get('message') or 'Identity detail confirm karein.')
+    elif blockers:
+        message.append(f"Bill me ek dikkat hai: {blockers[0]}")
     elif missing:
         fields={v['field'] for v in issues if v['kind']=='missing'}
         groups=[]
@@ -189,8 +228,9 @@ async def state(db,principal,draft_id,prefix=''):
         if fields & {'invoice_number','entry_date'}:groups.append('bill number/date')
         if 'invoice_total' in fields:groups.append('final total')
         if any(v in fields for v in ('supplier_gstin','place_of_supply','expected_taxes')) or any(v.endswith((':gst_rate',':hsn',':taxable_amount')) for v in fields):groups.append('bill ke tax details')
-        message.append('Bas '+', '.join(groups)+' chahiye. Ek message mein bata sakte hain, ya bill bhej dein.')
-    else:message.append('Purchase details review karein. Preview mein validation ke baad confirmation milega.')
+        message.append(f"Bill details me bas {', '.join(groups)} confirm karne hain. Kripya check karein.")
+    else:
+        message.append('Saari details match ho gayi hain. Preview check karke confirm karein taaki Tally me entry post ho sake.')
     response={'response':'\n'.join(message),'draft_id':row.id,'gst_purchase_draft':{'id':row.id},
         'purchase_assistant':{'draft_id':row.id,'revision':revision,'field':identity['field'] if identity else 'message','choices':identity['choices'] if identity else []},
         'proposal':proposal,'issues':issues,'suggestions':context.get('suggestions',[]),'evidence_version':proposal['evidence_version'],

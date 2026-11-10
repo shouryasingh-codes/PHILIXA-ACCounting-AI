@@ -58,7 +58,7 @@ async def context_for(db,principal,request):
         ChatBillMessage.user_id==principal.user_id).order_by(ChatBillMessage.created_at.desc(),ChatBillMessage.id.desc()).limit(1)) if conversation else None
     attachment_task=await tasks.scoped(db,principal,attachment_message.task_id) if attachment_message else None
     task_id=request.task_id or (attachment_task.id if attachment_task and (not latest or attachment_message.created_at>latest.created_at)
-        else prior.get('foreground_task_id')) or request.candidate_task_id
+        else prior.get('foreground_task_id')) or (attachment_task.id if attachment_task else None) or request.candidate_task_id
     task=await tasks.scoped(db,principal,task_id) if task_id else None
     explicit_control=bool(request.selection or request.context_refresh)
     if request.task_id and explicit_control and request.expected_revision is None:raise HTTPException(422,'Task revision required.')
@@ -229,7 +229,7 @@ async def dispatch(db,principal,request,row,decision,context):
     # Compatibility rollout: existing domain agent still owns the business
     # workflow. New grounded seeds stay OFF until the full evaluation gate passes.
     # Social/help/read turns have already returned and cannot create such tasks.
-    seed=first_step(decision,context) if enabled() or decision.intent=='bill_processing' and decision.handler=='domain_continuation' else None
+    seed=first_step(decision,context) if enabled() or decision.intent=='bill_processing' else None
     if decision.handler=='domain_continuation':
         if request.fields.company_id and request.fields.company_id!=context.get('company_id'):
             raise HTTPException(409,'Correction company mismatch.')

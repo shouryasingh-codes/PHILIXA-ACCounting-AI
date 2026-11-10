@@ -35,6 +35,12 @@ class ModelTests(unittest.IsolatedAsyncioTestCase):
         foreign=model.resolve(model.WireRoute(intent='bill_processing',context_relation='continue_current',document_draft_id='f'*32),context)
         self.assertEqual(foreign.handler,'clarify')
         with self.assertRaises(ValueError):model.resolve(model.WireRoute(intent='help',context_relation='continue_current',conversational_reply='Help'),context)
+        # Model returning purchase with continue_current for an active draft resolves seamlessly to bill_processing continuation
+        single_context={'task_id':'a'*32,'draft_id':'b'*32,'can_continue':True,'attachment_index':[{'drafts':[{'id':'b'*32,'revision':0}]}]}
+        purch_continue=model.resolve(model.WireRoute(intent='purchase',context_relation='continue_current'),single_context)
+        self.assertEqual(purch_continue.intent,'bill_processing')
+        self.assertEqual(purch_continue.handler,'domain_continuation')
+        self.assertEqual(purch_continue.target_draft_id,'b'*32)
 
     async def test_one_shared_gateway_attempt(self):
         decision=model.WireRoute(intent='help',conversational_reply='I can help with supported tasks.')

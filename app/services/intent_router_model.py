@@ -47,7 +47,7 @@ supplier_gstin, lines.N.item_name/quantity/unit/rate/discount_amount/discount_pe
 hsn/taxable_amount. Preserve unmentioned facts and supplied draft line indexes. No history or
 context facts copied as user facts. Never invent dates/reference/tax/rate. Identity answer
 updates party_name only. item_name only stock_read; report/report_dates only report_read;
-Posting/preparing an existing attached bill -> bill_processing with continue_current and its document_draft_id; this requests validation/review, never approval. A new upload-processing task -> bill_processing with independent relation. document_draft_id is also allowed for that existing bill action. document_fields only document_question. Other fields null/empty.
+Posting/preparing an existing attached bill -> bill_processing with continue_current and its document_draft_id; this requests validation/review, never approval. Colloquial requests to enter/post/punch/add a bill in Tally ('entry krde', 'bill ki entry kar do', 'chadhado', 'daal de', 'entry kro', with typos like 'billkki', 'bil', 'taly', 'enery') are bill_processing when an attached/saved bill or draft exists, with continue_current and document_draft_id; if no attached bill exists, route as purchase. A new upload-processing task -> bill_processing with independent relation. document_draft_id is also allowed for that existing bill action. document_fields only document_question. Other fields null/empty.
 Set every schema field. No arbitrary SQL/XML/shell, permissions or posting approval.
 '''
 
@@ -74,12 +74,14 @@ def resolve(wire,context):
         'unsupported':'clarify','clarification':'clarify'}
     handler=handlers[wire.intent]
     relation=wire.context_relation
-    if wire.intent=='bill_processing' and relation=='continue_current':
-        targets={d['id'] for source in context.get('attachment_index',[]) for d in source.get('drafts',[])}
-        target=wire.document_draft_id or (next(iter(targets)) if len(targets)==1 else None)
-        if not (context.get('can_continue') and context.get('task_id') and target==context.get('draft_id') and target in targets):
+    targets={d['id'] for source in context.get('attachment_index',[]) for d in source.get('drafts',[])}
+    target=wire.document_draft_id or (next(iter(targets)) if len(targets)==1 else (context.get('draft_id') if not targets else None))
+    valid_targets=set(targets)
+    if context.get('draft_id'):valid_targets.add(context['draft_id'])
+    if (wire.intent=='bill_processing' or (wire.intent=='purchase' and valid_targets)) and relation=='continue_current':
+        if not (context.get('can_continue') and context.get('task_id') and target and target==context.get('draft_id') and target in valid_targets):
             return RouteDecision(intent='clarification',relation='unclear',handler='clarify',clarification='Kaunsa saved bill prepare karna hai? Current bill review se chunein.',reason='bill_action_target_unclear')
-        wire=wire.model_copy(update={'document_draft_id':target})
+        wire=wire.model_copy(update={'intent':'bill_processing','document_draft_id':target})
         handler='domain_continuation'
     continuation=handler=='domain_continuation'
     if continuation and relation!='continue_current':raise ValueError('Continuation relation required')

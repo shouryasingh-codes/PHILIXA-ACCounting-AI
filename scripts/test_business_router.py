@@ -1,5 +1,8 @@
 """PostgreSQL routing lifecycle with mocked provider/domain reads; no native writes."""
 import asyncio
+import sys
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 import copy
 import os
 import secrets

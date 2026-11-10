@@ -67,6 +67,7 @@ class RouteDecision(BaseModel):
 def validate_evidence(decision, message, context):
     if decision.handler=='domain_document' or decision.intent=='bill_processing' and decision.target_draft_id:
         candidates=[d for source in context.get('attachment_index',[]) for d in source.get('drafts',[])]
+        if context.get('draft_id'):candidates.append({'id':context['draft_id']})
         if decision.target_draft_id and decision.target_draft_id not in {d['id'] for d in candidates}:
             raise ValueError('Unlisted document draft')
     if decision.target_task_id and decision.target_task_id != context.get('task_id'):
@@ -87,6 +88,45 @@ def validate_evidence(decision, message, context):
         temporal=re.search(r'\b(?:today|yesterday|month|year|week|between|from|since|aaj|kal|mahine|saal|pichhle|pichle|january|february|march|april|may|june|july|august|september|october|november|december)\b|\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|आज|कल|महीन|साल',message,re.I)
         if temporal and not dates:raise ValueError('Requested report period unresolved')
     return decision
+
+
+def normalize_command(text: str) -> str:
+    """Normalize informal Hinglish, phonetic typos, attached postpositions/particles and repeated characters."""
+    t = text.lower().strip()
+    t = re.sub(r'[\?!.,।/\\_~@#\$%\^&\*\(\)\[\]\{\}]+', ' ', t)
+    t = re.sub(r'(.)\1{2,}', r'\1', t)
+    t = re.sub(r'([^elos\s])\1+', r'\1', t)
+    t = re.sub(r'\b([a-z]{2,})(ki|ka|ke|ko|se|mai|mein|mey|pe|par)\b', r'\1 \2', t)
+    t = re.sub(r'\b(daal|dal|chadha|chada|charha|bana|kar|kr|punch|post|maar|mar)(de|do|krde|krdo|dena|karo|kro)\b', r'\1 \2', t)
+    t = re.sub(r'\b(bil|invoic|invoce)\b', 'bill', t)
+    t = re.sub(r'\b(enery|entri|antri|entree)\b', 'entry', t)
+    t = re.sub(r'\b(taly|talley|talli|tali)\b', 'tally', t)
+    t = re.sub(r'\b(mai|mein|mey)\b', 'me', t)
+    t = re.sub(r'\b(kro|karo)\b', 'kar do', t)
+    t = re.sub(r'\b(krde|karde)\b', 'kar de', t)
+    t = re.sub(r'\b(chada|charha)\b', 'chadha', t)
+    t = re.sub(r'\bdal\b', 'daal', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
+def is_bill_entry_intent(message: str) -> bool:
+    norm = normalize_command(message)
+    if re.search(r'\b(?:what|kya|kiya|kitna|kitne|kaun|kaunsa|who|batao?|dikhao?|show|check|help|sukriya|thanks?|bye)\b', norm):
+        return False
+    if re.search(r'\b(?:aur|and|or)\b', norm):
+        return False
+    if re.search(r'\d+\s*(?:bags?|pcs?|nos?|kg|ton|box|boxes|rate|\/)', norm) or re.search(r'\brate\s*\d+', norm):
+        return False
+    has_entry_action = bool(re.search(r'\b(?:entry|enter|record|chadha(?:do|de|na)?|daal(?:do|de|na)?|punch(?:ing)?|post(?:ing)?|process(?:ing)?|maar(?:do|de|o)?|mar(?:do|de|o)?)\b', norm))
+    has_make_voucher = bool(re.search(r'\b(?:bana(?:do|de|na|o)?)\b', norm) and re.search(r'\b(?:bill|voucher|entry)\b', norm))
+    if not (has_entry_action or has_make_voucher):
+        return False
+    has_tally = bool(re.search(r'\btally\b', norm))
+    has_bill = bool(re.search(r'\b(?:bill|invoice|voucher|parcha|challan|document|file|pdf)\b', norm))
+    has_ref = bool(re.search(r'\b(?:is|isi|ye|yeh|yo|yahi|same|current|saved|uploaded|attached)\b', norm))
+    has_verb = bool(re.search(r'\b(?:kar|kr|karo|kro|karna|krna|de|do|dena|kariye|kijiye|maar|maaro|mar|maro)\b', norm))
+    return has_tally or has_bill or has_ref or (has_entry_action and has_verb)
 
 
 def fast_route(message,context,*,selection=False,refresh=False):
@@ -114,13 +154,29 @@ def fast_route(message,context,*,selection=False,refresh=False):
     if text in {'haan','han','yes','done','ok','okay','जी','हाँ'}:
         return RouteDecision(intent='clarification',relation='standalone',handler='clarify',
             clarification='Kis saved task ya detail ke liye keh rahe hain? Current review se option chunein.',reason='ambiguous_acknowledgement')
+    if is_bill_entry_intent(message):
+        targets=[d['id'] for source in context.get('attachment_index',[]) for d in source.get('drafts',[])]
+        target_draft=context.get('draft_id') or (targets[0] if len(targets)==1 else None)
+        if not target_draft and len(targets)>1:
+            return RouteDecision(intent='clarification',relation='unclear',handler='clarify',
+                clarification='Kaunsa saved bill prepare karna hai? Current bill review se chunein.',reason='bill_action_target_unclear')
+        if target_draft or targets:
+            selected=target_draft or (targets[0] if targets else None)
+            if context.get('can_continue') and context.get('task_id'):
+                return RouteDecision(intent='bill_processing',relation='continue_current',handler='domain_continuation',
+                    target_task_id=context['task_id'],target_draft_id=selected,reason='fast_bill_processing')
+            return RouteDecision(intent='bill_processing',relation='switch_topic' if context.get('task_id') else 'standalone',
+                handler='agent',target_draft_id=None,reason='fast_bill_processing')
+        return RouteDecision(intent='purchase',relation='switch_topic' if context.get('task_id') else 'standalone',
+            handler='agent',reason='fast_purchase')
     return None
 
 
 def first_step(decision,context):
     """Only grounded draft operations; model cannot seed arbitrary tools/writes."""
-    if decision.intent=='bill_processing' and decision.handler=='domain_continuation' and context.get('draft_id'):
-        return {'kind':'tool','tool':'purchase_context','arguments':{'draft_id':context['draft_id']},'summary':'Saved bill ki purchase validation check kar rahi hoon.'}
+    target_draft=decision.target_draft_id or context.get('draft_id')
+    if decision.intent=='bill_processing' and (decision.handler=='domain_continuation' or decision.handler=='agent') and target_draft:
+        return {'kind':'tool','tool':'purchase_context','arguments':{'draft_id':target_draft},'summary':'Saved bill ki purchase validation check kar rahi hoon.'}
     if not decision.explicit_fields:return None
     if decision.intent=='purchase' and context.get('company_id'):
         return {'kind':'tool','tool':'create_purchase_draft','arguments':{'message_index':0,

@@ -80,5 +80,53 @@ class Contracts(unittest.TestCase):
         explicit=decision.model_copy(update={'report_dates':[]})
         self.assertEqual(validate_evidence(explicit,'Show purchase report',{}).report,'get_purchase_register')
 
+    def test_informal_hinglish_and_typo_bill_processing_with_attached_bill(self):
+        context={'task_id':'a'*32,'draft_id':'b'*32,'can_continue':True,'focused':True,
+                 'attachment_index':[{'drafts':[{'id':'b'*32,'revision':0}]}]}
+        phrases=[
+            'is billkki tally mai entry krde',
+            'bill ki entry kar do',
+            'ye bill tally me chadhado',
+            'is bil ki entry krna',
+            'tally me daal de bhai',
+            'entry kro',
+            'tally enery kro',
+            'is bill ko tally mai chada do',
+            'tally me bill daal do',
+            'bill punch kar do',
+            'ye bill chadha de',
+            'bill post kar do',
+            'is bill ki entry',
+            'tally me entry bana do',
+            'entry kar de',
+            'bill entry krdo',
+            'tally me daal do',
+            'is bill ko process karo',
+            'is bil ki tally entry kr do',
+            'bill chadhado'
+        ]
+        for phrase in phrases:
+            dec=fast_route(phrase,context)
+            self.assertIsNotNone(dec,f'Failed to route phrase: {phrase}')
+            self.assertEqual(dec.intent,'bill_processing',f'Wrong intent for: {phrase}')
+            self.assertEqual(dec.relation,'continue_current',f'Wrong relation for: {phrase}')
+            self.assertEqual(dec.handler,'domain_continuation',f'Wrong handler for: {phrase}')
+            self.assertEqual(dec.target_task_id,'a'*32)
+            self.assertEqual(dec.target_draft_id,'b'*32)
+            val=validate_evidence(dec,phrase,context)
+            self.assertEqual(val.target_draft_id,'b'*32)
+            step=first_step(dec,context)
+            self.assertEqual(step['tool'],'purchase_context')
+            self.assertEqual(step['arguments']['draft_id'],'b'*32)
+
+    def test_informal_purchase_without_attached_bill(self):
+        context={'can_continue':False}
+        for phrase in ('purchase entry karo','tally me entry karo','bill ki entry kar do'):
+            dec=fast_route(phrase,context)
+            self.assertIsNotNone(dec)
+            self.assertEqual(dec.intent,'purchase')
+            self.assertEqual(dec.handler,'agent')
+            self.assertEqual(dec.relation,'standalone')
+
 
 if __name__=='__main__':unittest.main()

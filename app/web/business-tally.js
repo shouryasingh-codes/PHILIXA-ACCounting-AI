@@ -447,8 +447,8 @@
       }
       const choices=document.createElement('div');choices.className='purchase-choice-list';options.append(choices);
       if(data.purchase_assistant.field?.endsWith(':item_name')){
-        toolButton(choices,'✨ Tally me ye naye stock items bana do',()=>submit('Tally me ye naye stock items bana do'));
-        toolButton(choices,'Existing item se map karein',()=>submit('Existing item se map karna hai'));
+        toolButton(choices,'🔗 Existing item se map karein',()=>submit('Existing item se map karna hai'));
+        toolButton(choices,'🔄 Tally items sync karein',()=>submit('Tally items sync karo'));
         if(data.purchase_assistant.choices?.length){
           const existDetails=document.createElement('details');existDetails.className='purchase-history-alternatives';
           const existSummary=document.createElement('summary');existSummary.textContent='Existing stock items me se chunein';existDetails.append(existSummary);

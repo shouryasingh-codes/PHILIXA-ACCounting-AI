@@ -189,13 +189,28 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
             if inv_num and entry_date:
                 break
 
+    raw_supplier = ''
+    for source in state.get('attachment_sources', []):
+        for d in source.get('drafts', []):
+            meta = d.get('extraction_metadata') or {}
+            raw_supplier = (meta.get('field_evidence', {}).get('party_name', {}).get('value')
+                            or meta.get('source_evidence', {}).get('supplier_name', {}).get('raw')
+                            or '').strip()
+            if raw_supplier:
+                break
+        if raw_supplier:
+            break
+
     lines_content = content.get('lines', [])
     tot_formatted = format_inr(total) if total else ''
 
     blocks = []
 
     # 1. Header with invoice, date and total:
-    header_lines = [f"Maine {supplier} ka bill check kar liya hai:"]
+    if raw_supplier and supplier and raw_supplier.casefold() != supplier.casefold() and supplier != 'Supplier':
+        header_lines = [f"Maine {raw_supplier} ka bill check kar liya hai (Tally me mapped: {supplier}):"]
+    else:
+        header_lines = [f"Maine {supplier} ka bill check kar liya hai:"]
     meta = []
     if inv_num:
         meta.append(f"Invoice: #{inv_num}")
@@ -254,7 +269,7 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
     if supplier_missing:
         blocks.append(f"Kya main Tally me {supplier} ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?")
     elif missing_items:
-        blocks.append("Kya main Tally me ye naye stock items bana doon, ya kisi existing item se map karna chahenge?")
+        blocks.append("Tally me ye stock items exist nahi karte. Kya aap inhe Tally ke existing items se map karna chahenge, ya pehle Tally me ye items bana kar sync karenge?")
 
     return "\n\n".join(blocks)
 

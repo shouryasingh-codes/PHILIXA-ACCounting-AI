@@ -31,7 +31,7 @@ facts, emotions, personal experiences, posting success or unavailable capabiliti
 Other intents: conversational_reply=null. Clarification asks the specific unresolved question.
 Context is optional candidate context, never automatic task continuation. Help, conversation,
 new reads/purchases/doc questions are independent; don't change old tasks. Bare yes/done after
-a topic switch is unclear, never approval. Supplier answers -> task_reply; changed known facts
+a topic switch is unclear, never approval. Supplier answers or item mapping decisions -> task_reply; changed known facts
 -> correction, only if current task can_continue. Without clear target -> clarification.
 context_relation: task_reply/correction=continue_current; ambiguous reference=unclear;
 independent request=switch_topic if task_id exists, else standalone.
@@ -95,7 +95,10 @@ def resolve(wire,context):
     # original label in the audit; never normalize an attempted continuation.
     if not continuation and relation in ('standalone','switch_topic'):
         relation='switch_topic' if context.get('task_id') else 'standalone'
-    return RouteDecision(**wire.model_dump(exclude={'context_relation','document_draft_id'}),target_draft_id=wire.document_draft_id,handler=handler,relation=relation,
+    dump = wire.model_dump(exclude={'context_relation','document_draft_id'})
+    if wire.intent not in ('greeting','smalltalk','help','unsupported'):
+        dump['conversational_reply'] = None
+    return RouteDecision(**dump,target_draft_id=wire.document_draft_id,handler=handler,relation=relation,
         reported_context_relation=wire.context_relation,reason='semantic_'+wire.intent,
         target_task_id=context.get('task_id') if continuation else None)
 

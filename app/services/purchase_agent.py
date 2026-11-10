@@ -212,7 +212,14 @@ async def state(db,principal,draft_id,prefix=''):
         elif ':item_name' in field:
             missing_items = [v for v in issues if v.get('kind') == 'identity' and str(v.get('field', '')).endswith(':item_name')]
 
-            header_lines = [f"Maine {supplier or 'bill'} ka bill check kar liya hai:"]
+            raw_supplier = (((row.extraction_metadata or {}).get('field_evidence') or {}).get('party_name', {}).get('value')
+                            or ((row.extraction_metadata or {}).get('source_evidence') or {}).get('supplier_name', {}).get('raw') or '').strip()
+            if raw_supplier and supplier and raw_supplier.casefold() != supplier.casefold() and supplier != 'Supplier':
+                sup_display = f"{raw_supplier} (Tally me mapped: {supplier})"
+            else:
+                sup_display = supplier or 'bill'
+
+            header_lines = [f"Maine {sup_display} ka bill check kar liya hai:"]
             meta = []
             if inv_num:
                 meta.append(f"Invoice: #{inv_num}")
@@ -251,7 +258,7 @@ async def state(db,principal,draft_id,prefix=''):
                 if len(missing_items) > 6:
                     item_bullets.append(f"  ...aur baaki {len(missing_items) - 6} items.")
 
-                message.append(f"{header}\n\nTally me entry chadhane ke liye ye {len(missing_items)} items match nahi hue:\n\n" + "\n".join(item_bullets) + "\n\nKya main Tally me ye naye stock items bana doon, ya kisi existing item se map karna chahenge?")
+                message.append(f"{header}\n\nTally me entry chadhane ke liye ye {len(missing_items)} items match nahi hue:\n\n" + "\n".join(item_bullets) + "\n\nTally me ye stock items exist nahi karte. Kya aap inhe Tally ke existing items se map karna chahenge, ya pehle Tally me ye items bana kar sync karenge?")
             else:
                 try:
                     idx = int(field.split(':')[0])
@@ -268,7 +275,7 @@ async def state(db,principal,draft_id,prefix=''):
                     if r_formatted:
                         spec.append(f"@ {r_formatted}")
                     spec_str = f" — {' '.join(spec)}" if spec else ""
-                    message.append(f"{header}\n\nTally me entry chadhane ke liye ye item match nahi hua:\n  1. {item_name}{spec_str}\n\nKya main Tally me ye naya stock item bana doon, ya kisi existing item se map karna chahenge?")
+                    message.append(f"{header}\n\nTally me entry chadhane ke liye ye item match nahi hua:\n  1. {item_name}{spec_str}\n\nTally me ye stock item exist nahi karta. Kya aap ise Tally ke kisi existing item se map karna chahenge, ya pehle Tally me create karke sync karenge?")
                 except (ValueError, IndexError):
                     message.append(identity.get('message') or 'Item identity check karein.')
         else:

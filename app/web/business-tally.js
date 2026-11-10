@@ -364,18 +364,56 @@
         card.className='purchase-proposal';
         tools.append(card);
       }
-      const heading=document.createElement('strong');heading.textContent='Purchase review · '+proposal.company;card.append(heading);
-      const party=document.createElement('p');party.textContent=proposal.content.party_name||(data.repeat_purchase?'Suggested supplier: '+data.repeat_purchase.supplier:'Supplier select karein');card.append(party);
+      const header=document.createElement('div');header.className='purchase-proposal-header';
+      const heading=document.createElement('strong');heading.className='purchase-proposal-company';
+      heading.textContent='Purchase review · '+proposal.company;header.append(heading);
+      if(proposal.content.invoice_number||proposal.content.entry_date){
+        const badge=document.createElement('span');badge.className='purchase-proposal-badge';
+        badge.textContent=[proposal.content.invoice_number?'#'+proposal.content.invoice_number:'',proposal.content.entry_date].filter(Boolean).join(' · ');
+        header.append(badge);
+      }
+      card.append(header);
+
+      const party=document.createElement('div');party.className='purchase-proposal-supplier';
+      party.textContent='🏢 '+(proposal.content.party_name||(data.repeat_purchase?'Suggested supplier: '+data.repeat_purchase.supplier:'Supplier select karein'));
+      card.append(party);
+
+      const linesList=document.createElement('div');linesList.className='purchase-proposal-lines';
       proposal.content.lines.forEach((line,index)=>{
-        const p=document.createElement('p');
+        const row=document.createElement('div');row.className='purchase-proposal-line-row';
+        const nameSpan=document.createElement('span');nameSpan.className='purchase-proposal-line-name';
+        nameSpan.textContent=line.item_name||'Item pending';
+
+        const pricingSpan=document.createElement('span');pricingSpan.className='purchase-proposal-line-pricing';
         const suggested=(data.suggestions||[]).find(s=>s.field===index+':rate');
-        p.textContent=[line.item_name||'Item pending',line.quantity&&`${line.quantity} ${line.unit||''}`,
-          line.rate?`₹${line.rate} per ${line.unit||'unit'}`:suggested?`Suggested ₹${suggested.value} — ${suggested.entry_date}`:'Rate pending'].filter(Boolean).join(' · ');
-        card.append(p);
+        const qStr=line.quantity?`${line.quantity} ${line.unit||''}`:'';
+        const rStr=line.rate?`₹${Number(line.rate).toLocaleString('en-IN',{maximumFractionDigits:2})}`:(suggested?`Suggested ₹${suggested.value}`:'Rate pending');
+        pricingSpan.textContent=[qStr,rStr].filter(Boolean).join(' @ ');
+        row.append(nameSpan,pricingSpan);
+        linesList.append(row);
       });
-      if(proposal.content.invoice_number||proposal.content.entry_date){const p=document.createElement('p');p.textContent=[proposal.content.invoice_number,proposal.content.entry_date].filter(Boolean).join(' · ');card.append(p);}
-      if(proposal.totals.total){const p=document.createElement('p');p.textContent='Calculated before tax: ₹'+proposal.totals.total;card.append(p);}
-      if(proposal.content.invoice_total){const p=document.createElement('p');p.textContent='User/source invoice total: ₹'+proposal.content.invoice_total;card.append(p);}
+      card.append(linesList);
+
+      const totalsBox=document.createElement('div');totalsBox.className='purchase-proposal-totals';
+      if(proposal.totals.total){
+        const row=document.createElement('div');row.className='purchase-proposal-total-row';
+        row.innerHTML=`<span>Subtotal (tax se pehle)</span><span>₹${Number(proposal.totals.total).toLocaleString('en-IN',{maximumFractionDigits:2})}</span>`;
+        totalsBox.append(row);
+      }
+      const taxes=proposal.content.expected_taxes||{};
+      Object.entries(taxes).forEach(([k,v])=>{
+        if(v!=null){
+          const row=document.createElement('div');row.className='purchase-proposal-total-row';
+          row.innerHTML=`<span>${k}</span><span>₹${Number(v).toLocaleString('en-IN',{maximumFractionDigits:2})}</span>`;
+          totalsBox.append(row);
+        }
+      });
+      if(proposal.content.invoice_total){
+        const row=document.createElement('div');row.className='purchase-proposal-total-row grand-total';
+        row.innerHTML=`<span>Invoice Total</span><span>₹${Number(proposal.content.invoice_total).toLocaleString('en-IN',{maximumFractionDigits:2})}</span>`;
+        totalsBox.append(row);
+      }
+      card.append(totalsBox);
       if(data.repeat_purchase){
         const repeat=document.createElement('p');repeat.className='purchase-repeat-summary';
         repeat.textContent=(data.repeat_purchase.subtotal_before_discount_tax?'Is nayi purchase ka suggested subtotal ₹'+data.repeat_purchase.subtotal_before_discount_tax+' (discount/GST se pehle). ':'')+data.repeat_purchase.note;

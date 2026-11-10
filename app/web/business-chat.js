@@ -431,7 +431,7 @@
       node.append(sources);
     }
     const tools = document.createElement('div'); tools.className = 'business-tools'; node.append(tools);
-    if(!data.response_kind||['document_answer','document_upload'].includes(data.response_kind))window.renderChatBillSources?.(tools,data);
+    if((!data.response_kind||['document_answer','document_upload'].includes(data.response_kind))&&!data.proposal)window.renderChatBillSources?.(tools,data);
     if(data.document_task&&data.status==='needs_input'&&data.attachment_sources?.some(source=>!source.drafts?.length&&['error','paused_budget'].includes(source.extraction_status))){
       const retryId=window.crypto.randomUUID();
       toolButton(tools,'Retry bill check',async()=>{

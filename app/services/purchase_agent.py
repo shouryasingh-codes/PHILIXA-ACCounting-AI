@@ -136,7 +136,9 @@ async def state(db,principal,draft_id,prefix=''):
         totals=drafts.draft_totals(content)
         if not content.get('tax_treatment') and totals['total'] and content.get('invoice_total') is not None:
             from decimal import Decimal
-            if Decimal(totals['total'])!=Decimal(str(content['invoice_total'])):
+            taxes = sum((Decimal(str(v)) for v in (content.get('expected_taxes') or {}).values() if v is not None), Decimal(0))
+            computed_total = Decimal(totals['total']) + taxes
+            if Decimal(totals['total'])!=Decimal(str(content['invoice_total'])) and computed_total!=Decimal(str(content['invoice_total'])):
                 issues.append({'field':'invoice_total','kind':'blocked','message':'Final total line amounts se match nahi hai.','choices':[]})
         return {'calls':calls,'issues':issues}
     async def proposal_node(s):

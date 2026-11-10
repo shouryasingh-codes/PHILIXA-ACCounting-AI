@@ -288,8 +288,20 @@ body { margin: 0; background: #fff; }
 #businessDrafts[data-chat-simple="true"][data-chat-step="1"] #billDraftMakePreview {display:none!important;}
 #businessDrafts[data-chat-simple="true"][data-chat-step="2"] [data-chat-step="1"],
 #businessDrafts[data-chat-simple="true"][data-chat-step="2"] #billDraftAddLine {display:none!important;}
-.purchase-proposal{flex-basis:100%;padding:14px;border:1px solid var(--border,#d6e2da);border-radius:12px;max-width:560px;line-height:1.6}
+.purchase-proposal{flex-basis:100%;padding:16px 18px;border:1px solid var(--border,#d6e2da);border-radius:12px;max-width:560px;line-height:1.5;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
 .purchase-proposal p{margin:5px 0}.purchase-proposal details{font-size:.85em}
+.purchase-proposal-header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eef3f0;padding-bottom:10px;margin-bottom:10px}
+.purchase-proposal-company{font-size:15px;font-weight:700;color:#1e3a2b}
+.purchase-proposal-badge{font-size:12px;font-weight:600;background:#edf5f0;color:#23583c;padding:3px 8px;border-radius:6px;border:1px solid #d2e5d9}
+.purchase-proposal-supplier{font-size:14px;font-weight:600;color:#28684d;margin:6px 0 10px}
+.purchase-proposal-lines{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.purchase-proposal-line-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8faf8;border:1px solid #e5ede7;border-radius:8px;font-size:13px}
+.purchase-proposal-line-name{font-weight:500;color:#27352c;flex:1;padding-right:12px;overflow-wrap:anywhere}
+.purchase-proposal-line-pricing{text-align:right;white-space:nowrap;font-weight:600;color:#1e3a2b;font-size:12px}
+.purchase-proposal-totals{margin-top:12px;padding-top:10px;border-top:1px dashed #d6e2da;display:flex;flex-direction:column;gap:5px}
+.purchase-proposal-total-row{display:flex;justify-content:space-between;font-size:13px;color:#55695d}
+.purchase-proposal-total-row.grand-total{font-size:15px;font-weight:700;color:#1a4231;margin-top:4px;padding-top:6px;border-top:1px solid #d6e2da}
+
 .purchase-task-panel{width:100%;max-width:560px;box-sizing:border-box;border:1px solid var(--border,#d6e2da);border-radius:14px;padding:16px;background:var(--surface,#fff);display:flex;flex-direction:column;gap:12px}
 .purchase-task-panel.has-blockers{border:0;padding:0;background:transparent;box-shadow:none;gap:8px}
 .purchase-proposal-toggle{margin:6px 0;font-size:13px;color:#2c5240}
@@ -298,8 +310,12 @@ body { margin: 0; background: #fff; }
 .purchase-proposal-toggle[open] .purchase-proposal-collapsed{margin-top:8px;padding:12px;border:1px solid #d6e2da;border-radius:10px;background:#fff}
 .purchase-task-panel .purchase-proposal,.purchase-task-panel .purchase-choice-card,.purchase-task-panel .purchase-history-card{border:0;padding:0;margin:0;max-width:none;box-shadow:none;background:transparent}
 .purchase-task-panel .purchase-inline-reply{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border,#d6e2da);padding-top:12px}
-.purchase-inline-reply label{display:block;width:100%;font-size:.9em}
-.purchase-inline-reply textarea{display:block;box-sizing:border-box;width:100%;margin-top:7px;padding:10px;border:1px solid var(--border,#d6e2da);border-radius:8px;font:inherit;resize:vertical}
+.purchase-inline-reply label{display:block;width:100%;font-size:.9em;color:#27352c;font-weight:500}
+.purchase-inline-reply select,.purchase-inline-reply input{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #cbd8ce;border-radius:8px;padding:10px 12px;background:#ffffff!important;color:#27352c!important;font:inherit;font-size:13px;outline:none;box-shadow:0 1px 2px rgba(0,0,0,0.04)}
+.purchase-inline-reply select:focus,.purchase-inline-reply input:focus,.purchase-inline-reply textarea:focus{border-color:#28684d;box-shadow:0 0 0 3px rgba(40,104,77,0.12)}
+.purchase-inline-reply textarea{display:block;box-sizing:border-box;width:100%;margin-top:7px;padding:10px 12px;border:1px solid #cbd8ce;border-radius:8px;background:#ffffff!important;color:#27352c!important;font:inherit;font-size:13px;resize:vertical;outline:none}
+.purchase-inline-reply button[type="submit"]{width:100%;margin-top:8px;padding:11px 16px;background:#28684d;color:#ffffff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s ease}
+.purchase-inline-reply button[type="submit"]:hover{background:#1f523c}
 .purchase-task-panel .purchase-extra-options{margin-top:2px}
 .business-thinking{display:inline-flex;align-items:center;gap:8px;color:inherit}
 .business-thinking-dots{display:inline-flex;align-items:center;gap:4px}

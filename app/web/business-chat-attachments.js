@@ -60,8 +60,12 @@
   };
   window.renderChatBillSources=(host,data)=>{
     const sources=data.chat_attachments||data.attachment_sources||[];
-    for(const source of sources){const card=el('div');card.className='chat-bill-card';card.append(el('strong',source.filename||'Bill'));
-      if(source.status)card.append(el('p',source.error||(['queued','processing'].includes(source.extraction_status)?'Bill ki details check ho rahi hain…':source.message||source.extraction_status||source.status)));
+    for(const source of sources){const card=el('div');card.className='chat-bill-card chat-bill-pill';
+      const fileBadge=el('strong','📄 '+(source.filename||'Bill'));fileBadge.className='chat-bill-title';card.append(fileBadge);
+      if(source.status&&(['queued','processing'].includes(source.extraction_status)||source.error)){
+        card.append(el('span',source.error||'Bill check ho rahi hai…'));
+      }
+      const actions=el('div');actions.className='chat-bill-actions';
       const original=el('button','View original');original.type='button';original.onclick=async()=>{
         original.disabled=true;const marker=previewEpoch;let url=null;try{
           const response=await window.fetchWithAuth('/api/v1/business/documents/'+encodeURIComponent(source.document_id)+'/original');
@@ -71,12 +75,11 @@
           if(preview.tagName==='IFRAME')preview.setAttribute('sandbox','');dialog.append(close,preview);document.body.append(dialog);
           previews.add(dialog);dialog.addEventListener('close',()=>{previews.delete(dialog);URL.revokeObjectURL(url);dialog.remove();},{once:true});dialog.showModal();
         }catch(error){card.append(el('p',error.message));if(url)URL.revokeObjectURL(url);}finally{original.disabled=false;}};
-      card.append(original);
-      for(const draft of source.drafts||[]){const content=draft.content||{};
-        card.append(el('p',draft.status==='verified'?'Pehle se Tally verified · existing draft':'Saved draft · review required'));
-        const conflicts=draft.extraction_metadata?.chat_source_conflicts||[];if(conflicts.length)card.append(el('p','Original/draft se correction: '+[...new Set(conflicts.map(c=>c.field))].join(', ')+'. Review required.'));
-        card.append(el('p',[content.party_name,content.invoice_number,content.invoice_total!=null?'Bill total ₹'+content.invoice_total:null].filter(Boolean).join(' · ')||'Details review required'));
-        const review=el('button','Review bill');review.type='button';review.onclick=()=>window.openDraftWithDoc?.(draft.id);card.append(review);}
+      actions.append(original);
+      for(const draft of source.drafts||[]){
+        const review=el('button','Review draft');review.type='button';review.onclick=()=>window.openDraftWithDoc?.(draft.id);actions.append(review);
+      }
+      card.append(actions);
       host.append(card);
     }
   };

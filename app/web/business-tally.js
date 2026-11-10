@@ -247,9 +247,10 @@
   setInterval(refreshConnectionBadge,10000);
   document.addEventListener('visibilitychange',refreshConnectionBadge);
   window.renderBusinessTally=(tools,data,{submit,toolButton,connect,renderResult,updateMessage,updateState})=>{
+    const hasIdentityBlockers=(data.issues||[]).some(i=>i.kind==='identity');
     const singleCard=!!(data.task_id&&(data.proposal||data.preview));
     if(singleCard){
-      const panel=document.createElement('section');panel.className='purchase-task-panel';
+      const panel=document.createElement('section');panel.className='purchase-task-panel'+(hasIdentityBlockers?' has-blockers':'');
       panel.setAttribute('aria-label','Purchase task');panel.setAttribute('aria-live','polite');
       tools.append(panel);tools=panel;
     }
@@ -349,7 +350,20 @@
     else if(data.connect_tally)toolButton(tools,'Connect Tally',connect);
     if(data.proposal){
       const proposal=data.proposal;
-      const card=document.createElement('section');card.className='purchase-proposal';
+      const card=document.createElement('section');
+      if(singleCard&&hasIdentityBlockers){
+        const details=document.createElement('details');
+        details.className='purchase-proposal-toggle';
+        const summary=document.createElement('summary');
+        summary.textContent=`🔍 Tally calculation & raw lines (${proposal.content?.lines?.length||0} items)`;
+        details.append(summary);
+        card.className='purchase-proposal purchase-proposal-collapsed';
+        details.append(card);
+        tools.append(details);
+      }else{
+        card.className='purchase-proposal';
+        tools.append(card);
+      }
       const heading=document.createElement('strong');heading.textContent='Purchase review · '+proposal.company;card.append(heading);
       const party=document.createElement('p');party.textContent=proposal.content.party_name||(data.repeat_purchase?'Suggested supplier: '+data.repeat_purchase.supplier:'Supplier select karein');card.append(party);
       proposal.content.lines.forEach((line,index)=>{
@@ -372,7 +386,7 @@
       }else if(data.purchase_context?.collected_at){const p=document.createElement('p');p.textContent='Tally context checked: '+data.purchase_context.collected_at;card.append(p);}
       const notes=document.createElement('details');const title=document.createElement('summary');title.textContent='Sources aur checks';notes.append(title);
       Object.entries(proposal.provenance||{}).forEach(([field,source])=>{const p=document.createElement('p');p.textContent=`${field}: ${source.value} · ${source.source_type} · ${source.status}`;notes.append(p);});
-      (data.issues||[]).forEach(issue=>{const p=document.createElement('p');p.textContent=issue.message;notes.append(p);});card.append(notes);tools.append(card);
+      (data.issues||[]).forEach(issue=>{const p=document.createElement('p');p.textContent=issue.message;notes.append(p);});card.append(notes);
       if(data.suggestions?.length&&!data.task_id)toolButton(tools,'Suggested rates sahi hain',()=>submit('Suggested rates sahi hain',false,{purchase_reply:{...data.purchase_assistant,accept_suggestions:true,evidence_version:data.evidence_version}}));
       if(data.task_id)(data.selections||[]).filter(o=>o.kind==='rate').forEach(offer=>{
         toolButton(tools,'Is purchase ka rate ₹'+offer.value+' hai',()=>submit('Suggested rate ₹'+offer.value+' is purchase ke liye confirm hai',false,
@@ -432,15 +446,33 @@
         if(text)updateMessage?.(text);
       }
       const choices=document.createElement('div');choices.className='purchase-choice-list';options.append(choices);
-      data.purchase_assistant.choices.forEach(choice=>{
-        const isSuggestedRate=data.purchase_assistant.field?.endsWith(':rate')&&(data.purchase_context?.suggestions||[]).some(s=>s.field===data.purchase_assistant.field&&s.value===choice);
-        const label=isSuggestedRate?'Haan, ₹'+Number(choice).toLocaleString('en-IN',{maximumFractionDigits:2})+' rate':choice;
-        toolButton(choices,label,()=>{
-          const offer=(data.selections||[]).find(o=>o.kind==='identity'&&o.value===choice);
-          if(data.task_id&&offer)return submit(choice,false,{selection:{reference:offer.reference,draft_revision:offer.draft_revision,evidence_version:offer.evidence_version}});
-          return submit(choice,false,{purchase_reply:data.purchase_assistant});
+      if(data.purchase_assistant.field?.endsWith(':item_name')){
+        toolButton(choices,'✨ Tally me ye naye stock items bana do',()=>submit('Tally me ye naye stock items bana do'));
+        toolButton(choices,'Existing item se map karein',()=>submit('Existing item se map karna hai'));
+        if(data.purchase_assistant.choices?.length){
+          const existDetails=document.createElement('details');existDetails.className='purchase-history-alternatives';
+          const existSummary=document.createElement('summary');existSummary.textContent='Existing stock items me se chunein';existDetails.append(existSummary);
+          const existOpts=document.createElement('div');existOpts.className='purchase-choice-list';existDetails.append(existOpts);
+          data.purchase_assistant.choices.forEach(choice=>{
+            toolButton(existOpts,choice,()=>{
+              const offer=(data.selections||[]).find(o=>o.kind==='identity'&&o.value===choice);
+              if(data.task_id&&offer)return submit(choice,false,{selection:{reference:offer.reference,draft_revision:offer.draft_revision,evidence_version:offer.evidence_version}});
+              return submit(`${data.purchase_assistant.field}: ${choice}`);
+            });
+          });
+          options.append(existDetails);
+        }
+      }else{
+        data.purchase_assistant.choices.forEach(choice=>{
+          const isSuggestedRate=data.purchase_assistant.field?.endsWith(':rate')&&(data.purchase_context?.suggestions||[]).some(s=>s.field===data.purchase_assistant.field&&s.value===choice);
+          const label=isSuggestedRate?'Haan, ₹'+Number(choice).toLocaleString('en-IN',{maximumFractionDigits:2})+' rate':choice;
+          toolButton(choices,label,()=>{
+            const offer=(data.selections||[]).find(o=>o.kind==='identity'&&o.value===choice);
+            if(data.task_id&&offer)return submit(choice,false,{selection:{reference:offer.reference,draft_revision:offer.draft_revision,evidence_version:offer.evidence_version}});
+            return submit(choice,false,{purchase_reply:data.purchase_assistant});
+          });
         });
-      });
+      }
       tools.append(options);
     }
     if(['pending','queued','processing','stale'].includes(data.purchase_context?.native_history_status)){
@@ -453,10 +485,10 @@
       reason.textContent=data.purchase_context.native_history_reason||'Tally history abhi verify nahi hui. Rate khud batayein; purana rate assume nahi karunga.';tools.append(reason);
     }
     let extraTools=tools;
-    const compactFacts=singleCard&&data.status==='needs_input'&&data.proposal?.content?.party_name&&!data.receipt_ready;
+    const compactFacts=singleCard&&data.status==='needs_input'&&data.proposal?.content?.party_name&&!data.receipt_ready&&!hasIdentityBlockers;
     if(singleCard&&data.status==='needs_input'){
       if(data.goods_receipt){const route=document.createElement('p');route.textContent='Goods received · bill pending';tools.append(route);}
-      if(!compactFacts)(data.situation_choices||[]).forEach(choice=>toolButton(tools,choice,()=>submit(choice)));
+      if(!compactFacts&&!hasIdentityBlockers)(data.situation_choices||[]).forEach(choice=>toolButton(tools,choice,()=>submit(choice)));
       if(data.receipt_ready)toolButton(tools,'Receipt Note ka review',()=>submit('Receipt Note preview'));
     }
     if(compactFacts){
@@ -494,7 +526,7 @@
       });
       tools.append(form);
     }
-    if(singleCard&&data.status==='needs_input'&&!compactFacts){
+    if(singleCard&&data.status==='needs_input'&&!compactFacts&&!hasIdentityBlockers){
       const form=document.createElement('form');form.className='purchase-inline-reply';
       const label=document.createElement('label');label.textContent=data.details_unknown?'Details milne par yahin likhein':'Missing details ya correction ek saath likhein';
       const answer=document.createElement('textarea');answer.rows=2;answer.maxLength=4000;

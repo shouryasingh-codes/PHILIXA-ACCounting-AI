@@ -291,6 +291,11 @@ body { margin: 0; background: #fff; }
 .purchase-proposal{flex-basis:100%;padding:14px;border:1px solid var(--border,#d6e2da);border-radius:12px;max-width:560px;line-height:1.6}
 .purchase-proposal p{margin:5px 0}.purchase-proposal details{font-size:.85em}
 .purchase-task-panel{width:100%;max-width:560px;box-sizing:border-box;border:1px solid var(--border,#d6e2da);border-radius:14px;padding:16px;background:var(--surface,#fff);display:flex;flex-direction:column;gap:12px}
+.purchase-task-panel.has-blockers{border:0;padding:0;background:transparent;box-shadow:none;gap:8px}
+.purchase-proposal-toggle{margin:6px 0;font-size:13px;color:#2c5240}
+.purchase-proposal-toggle summary{padding:6px 12px;background:#f4f8f5;border:1px dashed #b8d4c6;border-radius:8px;cursor:pointer;font-weight:500;outline:none;display:inline-block}
+.purchase-proposal-toggle summary:hover{background:#eaf3ee}
+.purchase-proposal-toggle[open] .purchase-proposal-collapsed{margin-top:8px;padding:12px;border:1px solid #d6e2da;border-radius:10px;background:#fff}
 .purchase-task-panel .purchase-proposal,.purchase-task-panel .purchase-choice-card,.purchase-task-panel .purchase-history-card{border:0;padding:0;margin:0;max-width:none;box-shadow:none;background:transparent}
 .purchase-task-panel .purchase-inline-reply{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border,#d6e2da);padding-top:12px}
 .purchase-inline-reply label{display:block;width:100%;font-size:.9em}
@@ -315,6 +320,11 @@ body { margin: 0; background: #fff; }
 .chat-bill-card {display:block;width:min(100%,480px);box-sizing:border-box;border:1px solid #cbdcd5;border-radius:12px;padding:12px;margin:6px 0;overflow-wrap:anywhere;text-align:left;background:#fbfdfc;}
 .chat-bill-card p {margin:6px 0;font-size:12px;}
 .chat-bill-card button {margin:4px 6px 0 0;}
+.chat-bill-card.chat-bill-pill {display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;width:auto;max-width:100%;padding:6px 12px;border-radius:8px;background:#f4f8f5;border:1px solid #cce2d6;margin:6px 0;}
+.chat-bill-pill .chat-bill-title {font-weight:600;font-size:13px;color:#1e3d2f;margin-right:4px;}
+.chat-bill-pill .chat-bill-actions {display:inline-flex;align-items:center;gap:6px;}
+.chat-bill-pill button {margin:0;padding:4px 10px;font-size:12px;border-radius:6px;background:#fff;border:1px solid #b8d4c6;cursor:pointer;color:#1e3d2f;transition:all .15s ease;}
+.chat-bill-pill button:hover {background:#eaf3ee;border-color:#88baa2;}
 .chat-bill-original {width:min(900px,95vw);height:85vh;border:1px solid #cbdcd5;border-radius:12px;}
 .chat-bill-original iframe {width:100%;height:90%;border:0;}
 .chat-bill-original img {display:block;max-width:100%;height:auto;}

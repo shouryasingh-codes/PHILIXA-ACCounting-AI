@@ -63,5 +63,35 @@ class ConversationTests(unittest.IsolatedAsyncioTestCase):
             await chats.create_conversation(self.db,self.principal,chats.ConversationCreate(organization_id='other'))
         self.assertEqual(error.exception.status_code,409)
 
+    async def test_delete_and_restore_retain_messages_without_actions(self):
+        created=await self.create()
+        saved=await chats.save_conversation(self.db,self.principal,created['id'],chats.ConversationSave(revision=0,messages=[{'role':'user','text':'Keep this transcript'}]))
+        removed=await chats.delete_conversation(self.db,self.principal,created['id'],saved['revision'])
+        self.assertEqual((await chats.list_conversations(self.db,self.principal))['conversations'],[])
+        for call in (chats.read_conversation(self.db,self.principal,created['id']),
+                     chats.save_conversation(self.db,self.principal,created['id'],chats.ConversationSave(revision=removed['revision'],messages=[]))):
+            with self.assertRaises(HTTPException) as error: await call
+            self.assertEqual(error.exception.status_code,404)
+        restored=await chats.restore_conversation(self.db,self.principal,created['id'],removed['revision'])
+        self.assertEqual(restored['revision'],saved['revision']+2)
+        self.assertEqual((await chats.read_conversation(self.db,self.principal,created['id']))['messages'][0]['text'],'Keep this transcript')
+        self.assertEqual(list((await self.db.scalars(select(TallyAction).where(TallyAction.organization_id==self.org))).all()),[])
+
+    async def test_delete_restore_scope_and_revision_guards(self):
+        created=await self.create()
+        saved=await chats.save_conversation(self.db,self.principal,created['id'],chats.ConversationSave(revision=0,messages=[]))
+        with self.assertRaises(HTTPException) as error: await chats.delete_conversation(self.db,self.principal,created['id'],0)
+        self.assertEqual(error.exception.status_code,409)
+        for changes in ({'user_id':'another-user'},{'organization_id':'another-workspace'}):
+            other=SimpleNamespace(**{**self.principal.__dict__,**changes})
+            for call in (chats.delete_conversation(self.db,other,created['id'],saved['revision']),
+                         chats.restore_conversation(self.db,other,created['id'],saved['revision'])):
+                with self.assertRaises(HTTPException) as error: await call
+                self.assertEqual(error.exception.status_code,404)
+        removed=await chats.delete_conversation(self.db,self.principal,created['id'],saved['revision'])
+        self.assertEqual((await chats.delete_conversation(self.db,self.principal,created['id'],saved['revision']))['revision'],removed['revision'])
+        with self.assertRaises(HTTPException) as error: await chats.restore_conversation(self.db,self.principal,created['id'],saved['revision'])
+        self.assertEqual(error.exception.status_code,409)
+
 
 if __name__=='__main__':unittest.main()

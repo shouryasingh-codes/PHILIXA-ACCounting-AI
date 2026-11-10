@@ -45,6 +45,7 @@ class BillDocument(Base):
     next_attempt_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime]=mapped_column(DateTime(timezone=True))
+    trashed_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True,index=True)
 
 
 class DocumentBatchItem(Base):

@@ -122,9 +122,11 @@ async def stock_projection(db, company, item, base, unit, snapshot_time=None):
     # an expected stock total from the old snapshot.
     if any(getattr(a,'backend',None)=='mcp' for a in actions):pending_verification=True
     if any(getattr(a,'backend',None) not in (None,'python') for a in relevant):pending_verification=True
-    pending=sum((decimal(l['quantity']) for a in relevant if a.status=='queued' and a.payload.get('operation')!='stock_count_set' and getattr(a,'backend',None) in (None,'python')
+    pending=sum((decimal(l['quantity']) for a in relevant if a.status=='queued' and a.payload.get('operation')!='stock_count_set' and not (a.preconditions or {}).get('receipt_link') and getattr(a,'backend',None) in (None,'python')
         for l in action_lines(a.payload) if l.get('item')==item and l.get('unit')==unit),Decimal(0))
-    if any(a.payload.get('operation')=='stock_count_set' for a in relevant):pending_verification=True
+    # A rejected/stale count awaiting review has no pending external effect.
+    # Queued counts and uncertain submissions still suppress projections.
+    if any(a.payload.get('operation')=='stock_count_set' and (a.status in ACTIVE or uncertain(a)) for a in relevant):pending_verification=True
     # A refresh may have captured a queued action's external effect after dispatch.
     # The company lock prevents that transition while a snapshot is published.
     expected=None if pending_verification or base is None else str(decimal(base)+pending)
@@ -135,14 +137,25 @@ async def preview_purchase(db,principal,parsed,draft=None):
     from app.services.tally_stock import resolve_scope
     admin(principal)
     if parsed.unsupported_reason:return {'response':parsed.unsupported_reason}
-    cfg=await db.get(TallyConnection,principal.organization_id)
-    if not cfg or not cfg.test_company:return {'response':'Purchase writes ke liye non-GST test company configure karein.','connect_tally':True}
     scope=await resolve_scope(db,principal,parsed)
+    if not scope:return {'response':'Permitted Tally company nahi mili. Company access approve karein.','connect_tally':True}
     if not parsed.company_id and len(scope)>1:
         return {'response':'Purchase kis company mein? Company select karein.','tally_choices':[
             {'name':c.name,'command':fields_for_selection(parsed,'company_id',c.id)} for c in scope]}
-    if len(scope)!=1 or scope[0].name!=cfg.company:return {'response':'Purchase sirf approved configured test company mein supported hai.'}
+    if len(scope)!=1:return {'response':'Purchase ke liye ek approved company select karein.','connect_tally':True}
     company=scope[0]
+    from app.services.goods_receipt_link_service import guard_unlinked
+    await guard_unlinked(db,company.id,parsed.party_name,{parsed.item_name},(draft.extraction_metadata or {}).get('receipt_link_source') if draft else None)
+    cfg=await db.get(TallyConnection,principal.organization_id)
+    setup_needed=not cfg or not cfg.test_company or cfg.company!=company.name
+    setup={'purchase_setup':{'company':company.name}} if setup_needed else {}
+    if not parsed.item_name:
+        snapshot=await saved_snapshot(db,company)
+        items=deserialize_catalog(snapshot.catalog)['items'] if snapshot else []
+        return {'response':company.name+': kis item ki purchase? Item ka naam/select karein.',
+                'tally_choices':[{'name':name(i),'command':fields_for_selection(parsed.model_copy(update={'company_id':company.id}),'item_name',name(i))} for i in items[:100]],**setup}
+    if setup_needed:
+        return {'response':company.name+' connected hai. Purchase entry settings abhi save nahi hain. Purchase entry setup mein company, godown aur ledgers check karein. Sirf separate practice company ko test ke liye approve karein; real accounts ki writes abhi disabled hain.',**setup}
     try:
         snapshot=await saved_snapshot(db,company)
         refresh_error=None
@@ -156,17 +169,35 @@ async def preview_purchase(db,principal,parsed,draft=None):
                 return {'response':'Helper connected hai, lekin purana version chal raha hai. Saved stock aur purchase sync ke liye Philixa Tally Connector update karein; pairing dobara zaroori nahi.','connect_tally':True,'helper_update_required':True}
             return {'response':'Complete saved masters available nahi. '+(refresh_error or 'Snapshot sync pending; thodi der baad retry karein.'),'connect_tally':True}
         catalog=deserialize_catalog(snapshot.catalog)
+        if parsed.purchase_tax_review and catalog.get('non_gst'):
+            return {'response':'GST/tax details wali purchase ko non-GST entry mein convert nahi karunga. GST-enabled approved practice company select karein, ya bill ka tax treatment Bills review mein accountant se check karayein.'}
         if not parsed.item_name:return {'response':'Kis item ki purchase? Item ka naam bataiye.'}
         from app.services.tally_business import match
         items=match(catalog['items'],parsed.item_name)
         if len(items)!=1:return {'response':'Item nahi mila.' if not items else 'Kaunsa item?','tally_choices':[
             {'name':name(i),'command':fields_for_selection(parsed,'item_name',name(i))} for i in items]}
+        from app.services.purchase_native_context import enabled as purchase_agent_enabled
+        if purchase_agent_enabled() and draft is None:
+            from app.services.chat_purchase import gst_working_copy
+            return await gst_working_copy(db,principal,company,parsed,name(items[0]),cfg.godown,gst=not catalog.get('non_gst'))
+        if not catalog.get('non_gst'):
+            # GST never goes through the legacy no-tax voucher compiler. Keep
+            # chat values in a durable working copy and use Bills' tax checks.
+            companies=[c for c in catalog.get('companies',[]) if name(c)==company.name]
+            if len(companies)!=1 or value(companies[0],'ISGSTON').casefold()!='yes':
+                return {'response':'Company ka GST status clear nahi hai. Masters sync karke purchase dobara review karein.'}
+            if draft is not None:
+                return {'response':'GST company ke liye Bills mein GST tax treatment aur item lines select karke Save & validate karein. Non-GST preview se GST entry nahi banegi.'}
+            from app.services.chat_purchase import gst_working_copy
+            return await gst_working_copy(db,principal,company,parsed,name(items[0]),cfg.godown)
         prior=list((await db.scalars(select(TallyAction).where(TallyAction.company_id==company.id,TallyAction.status.in_(('submitting','verification_pending','needs_review'))))).all())
         from app.services.tally_multi_purchase_service import action_lines
         if any(uncertain(a) and (a.backend=='mcp' or any(l.get('item')==name(items[0]) for l in action_lines(a.payload))) for a in prior):
             return {'response':'Is item ki earlier entry verification pending hai. Pehle status/manual review karein; duplicate purchase na banayein.'}
         missing=[k for k in ('party_name','quantity','unit','rate') if getattr(parsed,k) is None or getattr(parsed,k)=='']
-        if missing:return {'response':'Purchase ke liye '+', '.join(missing)+' bataiye.','tally_form':fields_for_selection(parsed,'item_name',name(items[0]))}
+        if missing:
+            from app.services.chat_purchase import gst_working_copy
+            return await gst_working_copy(db,principal,company,parsed,name(items[0]),cfg.godown,gst=False)
         parties=match(catalog['ledgers'],parsed.party_name)
         if len(parties)!=1:return {'response':'Supplier nahi mila.' if not parties else 'Kaunsa supplier?','tally_choices':[
             {'name':name(p),'command':fields_for_selection(parsed,'party_name',name(p))} for p in parties]}
@@ -245,6 +276,9 @@ async def confirm_queued(db,principal,action,approve=True,status_only=False):
     if getattr(action,'backend',None) not in (None,'python'):
         raise HTTPException(409,'MCP writes need operation-specific durable dispatch and live acceptance. Approval blocked.')
     if action.status!='preview':return action_result(action)
+    if action.payload.get('operation')=='goods_receipt' or (action.preconditions or {}).get('receipt_link'):
+        from app.services.tally_goods_receipt import RECEIPT_CODEC_CERTIFIED
+        if not RECEIPT_CODEC_CERTIFIED:raise HTTPException(409,'Native tracked-receipt acceptance pending; posting locked.')
     if action.payload.get('operation')=='stock_count_set':
         from app.services.tally_count import count_capability
         if not count_capability()['available']:return action_result(action)
@@ -255,19 +289,35 @@ async def confirm_queued(db,principal,action,approve=True,status_only=False):
     if not company or company.organization_id!=principal.organization_id:raise HTTPException(410,'Company unavailable.')
     try:device=await bound_device(db,company)
     except TallyError as exc:raise HTTPException(410,str(exc))
+    if action.payload.get('operation')=='goods_receipt' or (action.preconditions or {}).get('receipt_link'):
+        from app.core.redis import get_redis_client
+        redis=await get_redis_client()
+        try:ready=bool(device and await redis.exists('tally:v11online:'+device.id))
+        finally:await redis.aclose()
+        if not ready:raise HTTPException(409,'Tracked receipt/link posting ke liye paired protocol 11 connector required.')
     if not cfg or cfg.version!=action.connection_version or cfg.company!=company.name or (device.credential_hash if device else None)!=action.device_version:
         raise HTTPException(410,'Company/helper/config changed. Naya preview banayein.')
     if action.payload.get('operation')=='customer_ledger_create' and action.target_identity!={'company':company.identity}:
         raise HTTPException(410,'Customer company identity changed. Naya preview banayein.')
-    if action.payload.get('operation') in ('purchase_multi','purchase_gst') and action.target_identity!={'company':company.identity}:
+    if action.payload.get('operation') in ('purchase_multi','purchase_gst','goods_receipt') and action.target_identity!={'company':company.identity}:
         raise HTTPException(410,'Purchase company identity changed. Naya preview banayein.')
     if action.payload.get('operation')=='purchase_gst':
         from app.services.purchase_tax_service import ensure_approved_profile,acceptance_enabled
         if not acceptance_enabled():raise HTTPException(409,'GST live Tally acceptance pending; posting locked.')
         try:await ensure_approved_profile(db,action)
         except TallyError as exc:raise HTTPException(409,str(exc))
+    from app.services.purchase_native_context import guard_action
+    try:await guard_action(db,action)
+    except TallyError as exc:raise HTTPException(409,str(exc))
+    from app.services.purchase_memory_service import reserve
+    try:await reserve(db,principal,action)
+    except TallyError as exc:raise HTTPException(409,str(exc))
     action.status='queued';action.next_attempt_at=now();action.result=None
     action.approved_arguments=dict(action.payload)
+    from app.services.posting_authorization import record_authorization
+    await record_authorization(db,action,principal)
+    from app.services.bill_evaluation_service import posting_event
+    await posting_event(db,action,'posting_queued')
     await db.commit()
     return action_result(action)
 
@@ -303,11 +353,31 @@ async def process_action(db,action,company):
         from app.services.tally_customer import process_customer
         return await process_customer(db,action,company,cfg)
     count=action.payload.get('operation')=='stock_count_set'
-    multi=action.payload.get('operation') in ('purchase_multi','purchase_gst')
+    receipt=action.payload.get('operation')=='goods_receipt'
+    multi=action.payload.get('operation') in ('purchase_multi','purchase_gst','goods_receipt')
     if multi and (action.approved_arguments!=action.payload or action.target_identity!={'company':company.identity}):
         action.result={'uncertain':uncertain(action),'response':'Approved multi-item payload changed; review required.'}
         action.status='needs_review';await db.commit();return
     gst=action.payload.get('operation')=='purchase_gst'
+    if receipt and action.status=='queued':
+        from app.services.tally_goods_receipt import RECEIPT_CODEC_CERTIFIED
+        if not RECEIPT_CODEC_CERTIFIED:
+            action.status='needs_review';action.result={'uncertain':False,'response':'Native tracked-receipt acceptance pending.'};await db.commit();return
+    receipt_link=(action.preconditions or {}).get('receipt_link')
+    if receipt_link and action.status=='queued':
+        from app.services.tally_goods_receipt import RECEIPT_CODEC_CERTIFIED
+        if not RECEIPT_CODEC_CERTIFIED:
+            action.status='needs_review';action.result={'uncertain':False,'response':'Native linked-invoice acceptance pending.'};await db.commit();return
+    if action.status=='queued':
+        from app.services.purchase_native_context import guard_action
+        try:
+            await guard_action(db,action)
+            if not count and not receipt:
+                from app.services.goods_receipt_link_service import guard_unlinked
+                from app.services.tally_multi_purchase_service import action_lines
+                await guard_unlinked(db,company.id,action.payload.get('party'),{l.get('item') for l in action_lines(action.payload)},(action.preconditions or {}).get('receipt_link_source'))
+        except (TallyError,HTTPException) as exc:
+            action.status='needs_review';action.result={'uncertain':False,'response':str(exc)};await db.commit();return
     if gst:
         from app.services.purchase_tax_service import ensure_approved_profile,acceptance_enabled
         try:
@@ -316,8 +386,23 @@ async def process_action(db,action,company):
             action.status='needs_review';action.result={'uncertain':uncertain(action),'response':str(exc)};await db.commit();return
         if not acceptance_enabled() and action.status=='queued':
             action.status='needs_review';action.result={'uncertain':False,'response':'GST live acceptance pending; posting locked.'};await db.commit();return
-    prefix='purchase_gst_' if gst else 'stock_count_' if count else 'purchase_multi_' if multi else 'purchase_'
-    params={'payload':action.payload,'config':config_data(cfg),'action_id':action.token}
+    prefix='goods_receipt_' if receipt else 'purchase_gst_' if gst else 'stock_count_' if count else 'purchase_multi_' if multi else 'purchase_'
+    posting_config=config_data(cfg)
+    if receipt_link:posting_config['receipt_link']=receipt_link
+    guard=(action.preconditions or {}).get('invoice_guard')
+    if guard:
+        posting_config['invoice_guard']=guard
+        if action.status=='queued':
+            from app.services.purchase_memory_service import validate_bindings
+            try:await validate_bindings(db,company,(action.preconditions or {}).get('alias_bindings',[]))
+            except TallyError as exc:
+                action.status='needs_review';action.result={'uncertain':False,'response':str(exc)};await db.commit();return
+    params={'payload':action.payload,'config':posting_config,'action_id':action.token}
+    if action.status=='queued':
+        from app.services.purchase_automation_service import dispatch_guard
+        try:await dispatch_guard(db,action)
+        except (TallyError,HTTPException) as exc:
+            action.status='needs_review';action.result={'uncertain':False,'response':str(getattr(exc,'detail',exc))};await db.commit();return
     if count and action.status in ('draft','awaiting_review'):
         reply=await operation(db,company,prefix+'validate',**params)
         await db.refresh(action,with_for_update=True)
@@ -343,6 +428,10 @@ async def process_action(db,action,company):
             # Confirmation/cancellation can race the read-only validation request.
             await db.refresh(action,with_for_update=True)
             if action.status!='queued':return
+            from app.services.purchase_automation_service import dispatch_guard
+            try:await dispatch_guard(db,action)
+            except (TallyError,HTTPException) as exc:
+                action.status='needs_review';action.result={'uncertain':False,'response':str(getattr(exc,'detail',exc))};await db.commit();return
             if gst:
                 try:await ensure_approved_profile(db,action)
                 except TallyError as exc:
@@ -358,7 +447,7 @@ async def process_action(db,action,company):
         await db.refresh(action,with_for_update=True)
         if action.status not in ACTIVE:return
         await publish_snapshot(db,company,snapshot)
-        action.status='verified';action.result={'response':f'{"Physical Stock" if count else "Purchase"} voucher {reply["voucher_number"]} Tally mein saved aur verified hai.',
+        action.status='verified';action.result={'response':f'{"Receipt Note" if receipt else "Physical Stock" if count else "Purchase"} voucher {reply["voucher_number"]} Tally mein saved aur verified hai.',
                                                 'voucher_number':reply['voucher_number'],'company':company.name}
     elif reply.get('status') in ('failed','needs_review'):
         was_uncertain=uncertain(action)
@@ -369,6 +458,9 @@ async def process_action(db,action,company):
                 action.result['response']='Tally ne entry reject ki: '+reason[:300]+' Approved date: '+action.payload['date']+'. Naya preview banakar details/date correct karein.'
         if action.result['uncertain']:action.result['response']='Tally voucher/entry ko manually review karein. Result approved details se verify nahi hua; duplicate entry na banayein.'
     else:action.status='verification_pending';action.result=None
+    if action.status in ('verified','failed'):
+        from app.services.bill_evaluation_service import posting_event
+        await posting_event(db,action,'posting_result')
     await db.commit()
 
 async def sync_tick(ctx):

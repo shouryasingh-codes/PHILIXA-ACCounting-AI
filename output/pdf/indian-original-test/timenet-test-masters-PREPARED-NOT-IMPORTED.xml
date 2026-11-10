@@ -1,0 +1,326 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>Philixa Test</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE>
+          <UNIT NAME="No" ACTION="Create">
+            <NAME>No</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>No</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
+            <DECIMALPLACES>0</DECIMALPLACES>
+            <ORIGINALNAME>Numbers</ORIGINALNAME>
+          </UNIT>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <LEDGER NAME="TIMENET SOLUTIONS PVT LTD" ACTION="Create">
+            <NAME>TIMENET SOLUTIONS PVT LTD</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>TIMENET SOLUTIONS PVT LTD</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <PARENT>Sundry Creditors</PARENT>
+            <ISBILLWISEON>Yes</ISBILLWISEON>
+            <ISCOSTCENTRESON>No</ISCOSTCENTRESON>
+            <COUNTRYNAME>India</COUNTRYNAME>
+            <STATENAME>Kerala</STATENAME>
+            <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
+            <PARTYGSTIN>32AACCT0612L1ZP</PARTYGSTIN>
+            <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+            <LEDGSTREGDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
+              <GSTIN>32AACCT0612L1ZP</GSTIN>
+              <STATE>Kerala</STATE>
+              <COUNTRY>India</COUNTRY>
+            </LEDGSTREGDETAILS.LIST>
+          </LEDGER>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="Processor Intel Core I3-10100 (10th Generation)" ACTION="Create">
+            <NAME>Processor Intel Core I3-10100 (10th Generation)</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>Processor Intel Core I3-10100 (10th Generation)</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <PARENT />
+            <BASEUNITS>No</BASEUNITS>
+            <ISBATCHWISEON>No</ISBATCHWISEON>
+            <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+            <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <TAXABILITY>Taxable</TAXABILITY>
+              <SUPPLYTYPE>Goods</SUPPLYTYPE>
+              <ISREVERSECHARGEAPPLICABLE>No</ISREVERSECHARGEAPPLICABLE>
+              <GSTINELIGIBLEITC>No</GSTINELIGIBLEITC>
+              <HSNCODE>852852</HSNCODE>
+              <STATEWISEDETAILS.LIST>
+                <STATENAME>Any</STATENAME>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>SGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>18</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+              </STATEWISEDETAILS.LIST>
+            </GSTDETAILS.LIST>
+            <HSNDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <HSNCODE>852852</HSNCODE>
+            </HSNDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="Intel 410 Chip Set Mother board or higher with on-board graphics (GIGABYTE)" ACTION="Create">
+            <NAME>Intel 410 Chip Set Mother board or higher with on-board graphics (GIGABYTE)</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>Intel 410 Chip Set Mother board or higher with on-board graphics (GIGABYTE)</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <PARENT />
+            <BASEUNITS>No</BASEUNITS>
+            <ISBATCHWISEON>No</ISBATCHWISEON>
+            <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+            <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <TAXABILITY>Taxable</TAXABILITY>
+              <SUPPLYTYPE>Goods</SUPPLYTYPE>
+              <ISREVERSECHARGEAPPLICABLE>No</ISREVERSECHARGEAPPLICABLE>
+              <GSTINELIGIBLEITC>No</GSTINELIGIBLEITC>
+              <HSNCODE>847330</HSNCODE>
+              <STATEWISEDETAILS.LIST>
+                <STATENAME>Any</STATENAME>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>SGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>18</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+              </STATEWISEDETAILS.LIST>
+            </GSTDETAILS.LIST>
+            <HSNDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <HSNCODE>847330</HSNCODE>
+            </HSNDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="8GB DDR4 RAM - 4GB X2, DDR4, 2666MHz (ADATA)" ACTION="Create">
+            <NAME>8GB DDR4 RAM - 4GB X2, DDR4, 2666MHz (ADATA)</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>8GB DDR4 RAM - 4GB X2, DDR4, 2666MHz (ADATA)</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <PARENT />
+            <BASEUNITS>No</BASEUNITS>
+            <ISBATCHWISEON>No</ISBATCHWISEON>
+            <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+            <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <TAXABILITY>Taxable</TAXABILITY>
+              <SUPPLYTYPE>Goods</SUPPLYTYPE>
+              <ISREVERSECHARGEAPPLICABLE>No</ISREVERSECHARGEAPPLICABLE>
+              <GSTINELIGIBLEITC>No</GSTINELIGIBLEITC>
+              <HSNCODE>847330</HSNCODE>
+              <STATEWISEDETAILS.LIST>
+                <STATENAME>Any</STATENAME>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>SGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>18</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+              </STATEWISEDETAILS.LIST>
+            </GSTDETAILS.LIST>
+            <HSNDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <HSNCODE>847330</HSNCODE>
+            </HSNDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="2.5 inch 240GB SATA III SSD HARD DRIVE (KINGSTON)" ACTION="Create">
+            <NAME>2.5 inch 240GB SATA III SSD HARD DRIVE (KINGSTON)</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>2.5 inch 240GB SATA III SSD HARD DRIVE (KINGSTON)</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <PARENT />
+            <BASEUNITS>No</BASEUNITS>
+            <ISBATCHWISEON>No</ISBATCHWISEON>
+            <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+            <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <TAXABILITY>Taxable</TAXABILITY>
+              <SUPPLYTYPE>Goods</SUPPLYTYPE>
+              <ISREVERSECHARGEAPPLICABLE>No</ISREVERSECHARGEAPPLICABLE>
+              <GSTINELIGIBLEITC>No</GSTINELIGIBLEITC>
+              <HSNCODE>852310</HSNCODE>
+              <STATEWISEDETAILS.LIST>
+                <STATENAME>Any</STATENAME>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>SGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>18</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+              </STATEWISEDETAILS.LIST>
+            </GSTDETAILS.LIST>
+            <HSNDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <HSNCODE>852310</HSNCODE>
+            </HSNDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="ATX CABINET WITH 450 W SMPS (Zebronics)" ACTION="Create">
+            <NAME>ATX CABINET WITH 450 W SMPS (Zebronics)</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>ATX CABINET WITH 450 W SMPS (Zebronics)</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <PARENT />
+            <BASEUNITS>No</BASEUNITS>
+            <ISBATCHWISEON>No</ISBATCHWISEON>
+            <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+            <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <TAXABILITY>Taxable</TAXABILITY>
+              <SUPPLYTYPE>Goods</SUPPLYTYPE>
+              <ISREVERSECHARGEAPPLICABLE>No</ISREVERSECHARGEAPPLICABLE>
+              <GSTINELIGIBLEITC>No</GSTINELIGIBLEITC>
+              <HSNCODE>847330</HSNCODE>
+              <STATEWISEDETAILS.LIST>
+                <STATENAME>Any</STATENAME>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>SGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>18</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+              </STATEWISEDETAILS.LIST>
+            </GSTDETAILS.LIST>
+            <HSNDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <HSNCODE>847330</HSNCODE>
+            </HSNDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="18.5 inch LED Backlit Monitor (Acer 20 inch LED K202 HQLABI HDMI)" ACTION="Create">
+            <NAME>18.5 inch LED Backlit Monitor (Acer 20 inch LED K202 HQLABI HDMI)</NAME>
+            <LANGUAGENAME.LIST>
+              <NAME.LIST TYPE="String">
+                <NAME>18.5 inch LED Backlit Monitor (Acer 20 inch LED K202 HQLABI HDMI)</NAME>
+              </NAME.LIST>
+            </LANGUAGENAME.LIST>
+            <PARENT />
+            <BASEUNITS>No</BASEUNITS>
+            <ISBATCHWISEON>No</ISBATCHWISEON>
+            <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+            <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <TAXABILITY>Taxable</TAXABILITY>
+              <SUPPLYTYPE>Goods</SUPPLYTYPE>
+              <ISREVERSECHARGEAPPLICABLE>No</ISREVERSECHARGEAPPLICABLE>
+              <GSTINELIGIBLEITC>No</GSTINELIGIBLEITC>
+              <HSNCODE>852852</HSNCODE>
+              <STATEWISEDETAILS.LIST>
+                <STATENAME>Any</STATENAME>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>SGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>9</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
+                  <GSTRATE>18</GSTRATE>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                </RATEDETAILS.LIST>
+              </STATEWISEDETAILS.LIST>
+            </GSTDETAILS.LIST>
+            <HSNDETAILS.LIST>
+              <APPLICABLEFROM>20260401</APPLICABLEFROM>
+              <HSNCODE>852852</HSNCODE>
+            </HSNDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

@@ -231,6 +231,9 @@ async def _confirm_action(db, principal, token, approve=True, status_only=False)
         return action.result
     # Commit BEFORE external write. A crash cannot turn the action into a retryable preview.
     action.status='submitting'
+    action.approved_arguments=dict(action.payload)
+    from app.services.posting_authorization import record_authorization
+    await record_authorization(db,action,principal)
     await db.commit()
     try:
         reply=await connector.post(action.xml_payload)

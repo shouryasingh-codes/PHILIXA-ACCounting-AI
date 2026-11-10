@@ -13,7 +13,7 @@ from app.services.tally_multi_purchase import fingerprint_multi,validate_multi,m
 
 
 def action_lines(payload):
-    if payload.get('operation') in ('purchase_multi','purchase_gst'):return payload['items']
+    if payload.get('operation') in ('purchase_multi','purchase_gst','goods_receipt'):return payload['items']
     return [payload] if 'item' in payload else []
 
 

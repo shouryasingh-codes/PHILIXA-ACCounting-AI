@@ -22,6 +22,51 @@
   let transcript=[], activeScope=null;
   let conversationId=null, conversationRevision=0, chatSummaries=[], loadingChat=false, restorePromise=null;
   let saveQueue=Promise.resolve();
+  let lastDeletedChat=null, mutatingChat=false;
+  let purchaseMeter=null;
+  const attachments=window.createChatAttachments?.(input.parentElement,()=>resize());
+  window.businessChatAttachments=attachments;
+  document.getElementById('businessAttachBill').addEventListener('click',async()=>{
+    if(!attachments?.enabled)return;
+    try{await attachments.pick(activeScope);}catch(error){status.textContent=error.message;}
+  });
+  let taskAgentEnabled=false, intentRouterEnabled=false;
+  window.fetchWithAuth('/api/v1/business/task-capabilities').then(r=>r.ok?r.json():{}).then(d=>{
+    taskAgentEnabled=d.enabled===true;
+    attachments?.setEnabled(d.chat_attachments_enabled===true);
+    intentRouterEnabled=d.router_enabled===true;
+  }).catch(()=>{});
+  const taskPolls=new WeakMap();
+  function watchAgentTask(node,data,originalText){
+    if(!data.task_id||!['queued','running','waiting_context','verification_pending'].includes(data.status))return;
+    const old=taskPolls.get(node);if(old)clearTimeout(old);
+    const marker=epoch,scope=activeScope;
+    taskPolls.set(node,setTimeout(async()=>{
+      if(marker!==epoch||scope!==activeScope||!node.isConnected)return;
+      try{
+        const response=await window.fetchWithAuth('/api/v1/business/tasks/'+encodeURIComponent(data.task_id));
+        if(!response.ok)throw new Error('Task status unavailable; retry status check.');
+        const current=await response.json();
+        if(marker!==epoch||scope!==activeScope||!node.isConnected)return;
+        node.querySelector('.business-message-text').textContent=current.response;
+        if(node.chatRecord)node.chatRecord.text=current.response;
+        node.querySelectorAll('.business-tools').forEach(t=>t.remove());
+        renderTools(node,current,originalText);
+      }catch(error){if(marker===epoch)status.textContent=error.message;}
+    },2500));
+  }
+  function trackPurchaseReview(data){
+    if(!purchaseMeter&&window.BillReviewMeter){
+      purchaseMeter=new window.BillReviewMeter({active:()=>!busy&&!loadingChat&&!document.hidden&&(document.hasFocus?.()??true)&&!root.inert&&!document.querySelector?.('dialog[open]'),
+        send:async sample=>{const response=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+sample.context.id+'/review-time',{
+          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sample.body)});if(!response.ok)throw new Error('Review timing pending');}});
+      for(const event of ['pointerdown','keydown','input'])root.addEventListener(event,()=>purchaseMeter.activity());
+      setInterval(()=>purchaseMeter.tick(),2500);
+      setInterval(()=>purchaseMeter.flush().catch(()=>{}),10000);
+      window.addEventListener('pagehide',()=>purchaseMeter.flush().catch(()=>{}));
+    }
+    purchaseMeter?.select(data?.proposal?{id:data.draft_id,revision:data.proposal.revision,scope:JSON.stringify(activeScope)}:null);
+  }
   let serverSaveFailed=false;
   const chatList=document.getElementById('businessChatList');
   let browserStorage, legacyStorage, storageWarning='';
@@ -37,17 +82,57 @@
   async function chatApi(path,options={}) {
     const response=await window.fetchWithAuth('/api/v1/business/conversations'+path,options);
     const data=await response.json();
-    if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:'Chat save/load nahi hui.');
+    if(!response.ok)throw Object.assign(new Error(typeof data.detail==='string'?data.detail:'Chat save/load nahi hui.'),{status:response.status});
     return data;
   }
   function renderChatList() {
     chatList.replaceChildren();
+    if(lastDeletedChat?.scope===activeScope){
+      const notice=document.createElement('div');notice.className='business-history-notice';notice.setAttribute('role','status');
+      const label=document.createElement('span');label.textContent='Chat deleted';
+      const undo=document.createElement('button');undo.type='button';undo.className='business-chat-undo';undo.textContent='Undo';undo.disabled=mutatingChat;
+      undo.addEventListener('click',restoreDeletedChat);notice.append(label,undo);chatList.append(notice);
+    }
     if(!chatSummaries.length){const empty=document.createElement('span');empty.className='business-history-empty';empty.textContent='Saved chats yahan dikhenge.';chatList.append(empty);}
     for(const chat of chatSummaries){
-      const button=document.createElement('button');button.type='button';button.textContent=chat.title;button.title=chat.title;
+      const title=(chat.title||'New chat').replace(/[↗↖↘↙▦◷✧]/g,' ').replace(/([a-z])([A-Z][a-z])/g,'$1 $2').replace(/\s+/g,' ').trim()||'New chat';
+      const row=document.createElement('div');row.className='business-chat-row';row.setAttribute('data-active',String(chat.id===conversationId));
+      const button=document.createElement('button');button.type='button';button.className='business-chat-open';button.textContent=title;button.title=title;
       button.setAttribute('aria-current',String(chat.id===conversationId));
-      button.addEventListener('click',()=>{if(!busy&&!loadingChat)openChat(chat.id);});chatList.append(button);
+      button.addEventListener('click',()=>{if(!busy&&!loadingChat&&!mutatingChat)openChat(chat.id);});
+      const remove=document.createElement('button');remove.type='button';remove.className='business-chat-delete';remove.title='Delete chat';remove.disabled=mutatingChat;
+      remove.setAttribute('aria-label','Delete chat: '+title);
+      remove.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>';
+      remove.addEventListener('click',()=>deleteChat(chat));
+      row.append(button,remove);chatList.append(row);
     }
+  }
+  async function deleteChat(chat) {
+    if(busy||loadingChat||mutatingChat)return;
+    const scope=activeScope;mutatingChat=true;renderChatList();
+    try {
+      await saveQueue;if(scope!==activeScope)return;
+      if(serverSaveFailed)throw new Error('Current chat save nahi hui. Delete se pehle retry karein.');
+      const current=chatSummaries.find(item=>item.id===chat.id);if(!current)return;
+      const removed=await chatApi('/'+encodeURIComponent(chat.id)+'?revision='+current.revision,{method:'DELETE'});
+      if(scope!==activeScope)return;
+      chatSummaries=chatSummaries.filter(item=>item.id!==chat.id);
+      if(conversationId===chat.id){reset();conversationId=null;conversationRevision=0;store.clear();store.selectConversation('new');}
+      lastDeletedChat={id:chat.id,revision:removed.revision,scope};
+    }catch(error){if(scope===activeScope)status.textContent=error.message;}
+    finally{mutatingChat=false;if(scope===activeScope){renderChatList();resize();}}
+  }
+  async function restoreDeletedChat() {
+    if(busy||loadingChat||mutatingChat||lastDeletedChat?.scope!==activeScope)return;
+    const removed=lastDeletedChat,scope=activeScope;mutatingChat=true;renderChatList();
+    try {
+      await saveQueue;if(scope!==activeScope)return;
+      const restored=await chatApi('/'+encodeURIComponent(removed.id)+'/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:removed.revision})});
+      if(scope!==activeScope)return;
+      chatSummaries=[restored,...chatSummaries.filter(item=>item.id!==restored.id)];lastDeletedChat=null;
+      await openChat(restored.id);
+    }catch(error){if(scope===activeScope)status.textContent=error.message;}
+    finally{mutatingChat=false;if(scope===activeScope)renderChatList();}
   }
   function queueChatSave() {
     const scope=activeScope, id=epoch, snapshot=JSON.parse(JSON.stringify(transcript));
@@ -81,6 +166,8 @@
   }
   const audioUrls = new Set();
   const reset = () => {
+    purchaseMeter?.select(null);
+    attachments?.clear();window.closeChatBillPreviews?.();
     epoch++; requestController?.abort(); voice.cancel(); busy = false; history = [];
     transcript=[];storageWarning='';serverSaveFailed=false;
     messages.querySelectorAll('audio').forEach(audio => audio.pause());
@@ -99,7 +186,8 @@
   const resize = () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 130) + 'px';
-    send.disabled = busy || voiceActive || !input.value.trim();
+    send.disabled = busy || voiceActive || (!input.value.trim()&&!attachments?.hasFiles);
+    attachments?.lock(busy);
     mic.disabled = busy;
   };
   const connect = () => { closeMenu(); if (!dialog.open) dialog.showModal(); window.openBusinessTally?.(); };
@@ -160,23 +248,62 @@
     scroll.scrollTop = scroll.scrollHeight;
     return node;
   }
+  async function submitAttachments(text){
+    busy=true;welcome.hidden=true;voice.cancel();resize();const marker=epoch,scope=activeScope;
+    try{
+      await saveQueue;if(serverSaveFailed)throw new Error('Chat save pending. Pehle retry karein.');
+      if(!conversationId){const created=await chatApi('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({organization_id:JSON.parse(scope).organization_id})});conversationId=created.id;conversationRevision=created.revision;store.selectConversation(conversationId);}
+      const payload=await attachments.stage(text,scope);if(marker!==epoch||scope!==activeScope)return;
+      const response=await window.fetchWithAuth('/api/v1/business/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,text,conversation_id:conversationId,conversation_revision:conversationRevision})});
+      const result=await response.json();if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Bill send failed. Wahi message retry karein.');
+      if(marker!==epoch||scope!==activeScope)return;
+      conversationRevision=result.conversation_revision;attachments.clear();input.value='';
+      loadingChat=true;const chat=await chatApi('/'+encodeURIComponent(conversationId));
+      transcript=chat.messages;conversationRevision=chat.revision;messages.replaceChildren();renderTranscript();store.write(transcript);
+      chatSummaries=[chat,...chatSummaries.filter(c=>c.id!==chat.id)];renderChatList();status.textContent='';
+    }catch(error){if(marker===epoch){status.textContent=error.message;input.value=text;}}
+    finally{if(marker===epoch){loadingChat=false;busy=false;resize();}}
+  }
   async function submit(text, spoken = false, command = {}) {
     if(!activeScope)await restoreChat();
     if(!activeScope){status.textContent='Chat session load nahi hui. Page refresh karke dobara try karein.';return;}
-    text = text.trim(); if (!text || busy || loadingChat || root.inert) return;
+    text = text.trim();
+    if(attachments?.hasFiles&&!busy&&!loadingChat&&!root.inert){await submitAttachments(text);return;}
+    if (!text || busy || loadingChat || root.inert) return;
+    const lastAssistant=[...transcript].reverse().find(m=>m.role==='assistant');
+    const newTopic=/\b(?:stock\s+(?:kitna|check|report|dikha)|reports?(?:\s|$)|customers?(?:\s|$)|supplier\s+list|new purchase|nayi purchase|purchase\s+(?:kar|ki|entry)|kharid\w*|khareed\w*|bank\s|payment\s|sales?\s)|स्टॉक|रिपोर्ट|खरीद/i.test(text);
+    const taskTurn=command.task_id?{data:{task_id:command.task_id,task_revision:command.expected_revision}}:lastAssistant?.data?.task_id?lastAssistant:[...transcript].reverse().find(m=>m.role==='assistant'&&m.data?.task_id);
+    const agentTask=!command.intent&&(intentRouterEnabled?!!(command.selection||command.context_refresh||command.task_inline):(!newTopic||command.selection||command.context_refresh||command.task_inline))&&(lastAssistant?.data?.task_id||command.selection||command.context_refresh||command.task_inline)?taskTurn?.data:null;
+    const inlineNode=agentTask&&command.task_inline?[...messages.children].reverse().find(n=>n.chatRecord?.data?.task_id===agentTask.task_id):null;
+    const pending=command.purchase_reply||(intentRouterEnabled?null:agentTask?null:(!command.intent&&!newTopic?lastAssistant?.data?.purchase_assistant:null));
     voice.cancel(); welcome.hidden = true; busy = true;
     const id = epoch;
     requestController = new AbortController();
-    addMessage(text, 'user'); input.value = ''; resize();
+    if(!inlineNode)addMessage(text, 'user'); input.value = ''; resize();
     status.textContent = 'Soch raha hoon…';
     try {
       await saveQueue;
       if(id!==epoch)return;
-      const response = await window.fetchWithAuth('/api/v1/business/command', {
+      let response = await window.fetchWithAuth(pending?'/api/v1/business/purchase-drafts/'+pending.draft_id+'/chat':'/api/v1/business/command', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         signal: requestController.signal,
-        body: JSON.stringify({ text, conversation_history: history.slice(-10), ...command })
+        body: JSON.stringify(pending?(pending.resume?{resume:true}:{revision:pending.revision,expected_revision:pending.revision,field:pending.field,answer:text,message:text,
+          request_id:window.crypto.randomUUID(),evidence_version:pending.evidence_version||lastAssistant?.data?.evidence_version,
+          accept_suggestions:!!pending.accept_suggestions,prepare_preview:!!pending.prepare_preview}):{ text, conversation_history: history.filter(turn=>turn.content?.trim()).slice(-10), ...command,
+          ...(intentRouterEnabled||taskAgentEnabled||agentTask?{request_id:window.crypto.randomUUID()}:{}),
+          ...(agentTask?{task_id:agentTask.task_id,expected_revision:agentTask.task_revision}:intentRouterEnabled&&taskTurn?.data?.task_id?{candidate_task_id:taskTurn.data.task_id}:{}),
+          ...(intentRouterEnabled&&/^[a-f0-9]{32}$/.test(conversationId||'')?{conversation_id:conversationId,conversation_revision:conversationRevision}:{}),
+          fields:{...(command.fields||{}),...(/^[a-f0-9]{32}$/.test(conversationId||'')?{purchase_context:conversationId}:{})} })
       });
+      if(pending&&[409,422].includes(response.status)){
+        if(id!==epoch)return;
+        const problem=await response.json();
+        const refreshed=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+pending.draft_id+'/chat',{
+          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resume:true})});
+        if(refreshed.ok){const current=await refreshed.json();current.response=(typeof problem.detail==='string'?problem.detail:'Draft changed; answer dobara review karein.')+'\n'+current.response;
+          response={ok:true,json:async()=>current};
+        }else response=refreshed;
+      }
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         const issues=Array.isArray(error.detail)?error.detail:[];
@@ -190,7 +317,12 @@
       }
       const data = await response.json();
       if (id !== epoch) return;
-      const node = addMessage(data.tasks ? data.response.split('\n')[0] : data.response, 'assistant');
+      const node = inlineNode||addMessage(data.tasks ? data.response.split('\n')[0] : data.response, 'assistant');
+      if(inlineNode){
+        node.querySelector('.business-message-text').textContent=data.response;
+        if(node.chatRecord)node.chatRecord.text=data.response;
+        node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());
+      }
       renderTools(node, data, text);
       scroll.scrollTop = scroll.scrollHeight;
       history.push({role:'user',content:text},{role:'assistant',content:data.response.slice(0,4000)});
@@ -220,7 +352,22 @@
       }
     } catch (error) {
       if (id === epoch) {
-        addMessage(error.message || 'AI se jawab nahi aa paya. Dobara try karein.', 'assistant');
+        const message=error.message || 'AI se jawab nahi aa paya. Dobara try karein.';
+        const node=inlineNode||addMessage(message,'assistant');
+        if(inlineNode){node.querySelector('.business-message-text').textContent=message;node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());if(node.chatRecord)node.chatRecord.text=message;}
+        if(agentTask){
+          // Refresh only the task status; never replay a rejected selection.
+          try{
+            const refreshed=await window.fetchWithAuth('/api/v1/business/tasks/'+encodeURIComponent(agentTask.task_id));
+            if(!refreshed.ok)throw new Error('Task status unavailable');
+            if(refreshed.ok&&id===epoch){const current=await refreshed.json();current.response=message+'\n'+current.response;
+              node.querySelector('.business-message-text').textContent=current.response;
+              if(node.chatRecord)node.chatRecord.text=current.response;
+              renderTools(node,current,text);}
+          }catch{/* retain current task identity even if status transport fails */
+            renderTools(node,{...agentTask,response:message},text);
+          }
+        }
         input.value = text; status.textContent = 'Message dobara bhej sakte hain.';
       }
     } finally {
@@ -231,7 +378,51 @@
     const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
     button.addEventListener('click', () => { if (!busy && !root.inert) handler(); }); parent.append(button); return button;
   }
+  window.continuePurchaseChat=draftId=>submit('Purchase continue karein',false,{purchase_reply:{draft_id:draftId,resume:true}});
+  const contextRefreshes=new WeakMap();
+  function schedulePurchaseContext(node,data,originalText){
+    // Task turns must retain their durable identity; legacy chat refresh would
+    // replace the card with a response lacking task/revision references.
+    if(data.task_id)return;
+    const pending=['pending','queued','processing','stale'].includes(data.purchase_context?.native_history_status);
+    if(!pending||!data.purchase_assistant||!data.draft_id)return;
+    const attempt=contextRefreshes.get(node)||0;
+    if(attempt>=4)return;
+    contextRefreshes.set(node,attempt+1);
+    const taskEpoch=epoch,revision=data.purchase_assistant.revision;
+    setTimeout(async()=>{
+      // A new message, workspace/login change or another tab edit wins.
+      if(taskEpoch!==epoch||!node.isConnected||messages.lastElementChild!==node)return;
+      try{
+        const response=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+data.draft_id+'/chat',{
+          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resume:true})});
+        if(!response.ok)return;
+        const current=await response.json();
+        if(taskEpoch!==epoch||!node.isConnected||messages.lastElementChild!==node||current.purchase_assistant?.revision!==revision)return;
+        const text=node.querySelector('.business-message-text');if(text)text.textContent=current.response;
+        if(node.chatRecord)node.chatRecord.text=current.response;
+        node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());
+        renderTools(node,current,originalText);
+      }catch{/* Manual status remains available; no unbounded retry. */}
+    },[2000,4000,8000,12000][attempt]);
+  }
   function renderTools(node, data, originalText) {
+    const taskText=node.querySelector('.business-message-text');
+    if(taskText){
+      taskText.querySelectorAll('.business-thinking').forEach(indicator=>indicator.remove());
+      if(data.task_id&&data.progress_active!==false&&['queued','running'].includes(data.status)){
+        taskText.textContent='';
+        const indicator=document.createElement('span');indicator.className='business-thinking';
+        indicator.setAttribute('role','status');indicator.setAttribute('aria-live','polite');
+        const label=document.createElement('span');label.textContent=data.document_task?'Bill ki details check ho rahi hain':'Philixa soch rahi hai';indicator.append(label);
+        const dots=document.createElement('span');dots.className='business-thinking-dots';dots.setAttribute('aria-hidden','true');
+        for(let i=0;i<3;i++){const dot=document.createElement('span');dots.append(dot);}
+        indicator.append(dots);taskText.append(indicator);
+      }else if(data.task_id&&data.response){taskText.textContent=data.response;}
+    }
+    watchAgentTask(node,data,originalText);
+    trackPurchaseReview(data);
+    if(data.route_id&&data.can_retry_routing)data.routing_retry_request_id=data.routing_retry_request_id||window.crypto.randomUUID();
     if(node.chatRecord){node.chatRecord.data=data;node.chatRecord.originalText=originalText;persist();}
     if (data.source_meetings?.length) {
       const sources = document.createElement('p');
@@ -240,8 +431,58 @@
       node.append(sources);
     }
     const tools = document.createElement('div'); tools.className = 'business-tools'; node.append(tools);
+    if(!data.response_kind||['document_answer','document_upload'].includes(data.response_kind))window.renderChatBillSources?.(tools,data);
+    if(data.document_task&&data.status==='needs_input'&&data.attachment_sources?.some(source=>!source.drafts?.length&&['error','paused_budget'].includes(source.extraction_status))){
+      const retryId=window.crypto.randomUUID();
+      toolButton(tools,'Retry bill check',async()=>{
+        const marker=epoch;
+        const response=await window.fetchWithAuth('/api/v1/business/tasks/'+encodeURIComponent(data.task_id)+'/resume',{
+          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_revision:data.task_revision,request_id:retryId,retry_documents:true})});
+        const result=await response.json();if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Retry unavailable; reload current task.');
+        if(marker!==epoch||!node.isConnected)return;
+        node.querySelectorAll('.business-tools').forEach(t=>t.remove());renderTools(node,result,originalText);
+      });
+    }
+    if(data.route_id&&data.can_retry_routing){
+      data.routing_retry_request_id=data.routing_retry_request_id||window.crypto.randomUUID();
+      toolButton(tools,'Retry message',async()=>{
+        const marker=epoch;
+        const response=await window.fetchWithAuth('/api/v1/business/routing/'+encodeURIComponent(data.route_id)+'/retry',{
+          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:data.routing_retry_request_id})});
+        const current=await response.json();
+        if(!response.ok)throw new Error(typeof current.detail==='string'?current.detail:'Retry unavailable; reload chat.');
+        if(marker!==epoch||!node.isConnected)return;
+        node.querySelector('.business-message-text').textContent=current.response;
+        if(node.chatRecord)node.chatRecord.text=current.response;
+        node.querySelectorAll('.business-tools').forEach(t=>t.remove());renderTools(node,current,originalText);
+      });
+    }
+    if(data.route_id&&data.issues?.some(i=>['routing_in_progress','dispatch_uncertain'].includes(i.code))){
+      toolButton(tools,'Status dekhein',async()=>{
+        const checkEpoch=epoch;
+        const response=await window.fetchWithAuth('/api/v1/business/routing/'+encodeURIComponent(data.route_id));
+        if(!response.ok||checkEpoch!==epoch||!node.isConnected)return;
+        const current=await response.json();
+        node.querySelector('.business-message-text').textContent=current.response;
+        if(node.chatRecord)node.chatRecord.text=current.response;
+        node.querySelectorAll('.business-tools').forEach(t=>t.remove());renderTools(node,current,originalText);
+      });
+    }
+    if(data.task_id&&data.wait_reason){
+      const note=document.createElement('p');note.className='business-hint';
+      const delay=data.retry_at?Math.max(0,Math.ceil((Date.parse(data.retry_at)-Date.now())/1000)):null;
+      note.textContent=data.status==='waiting_context'&&delay!==null?'Saved · next attempt '+delay+' sec mein.':'Task saved hai.';tools.append(note);
+    }
+    const providerBlocked=data.issues?.some(issue=>['provider_access_denied','provider_authentication','provider_request_failed'].includes(issue.code));
+    if(data.task_id&&data.can_resume&&(data.wait_reason||providerBlocked))toolButton(tools,'Resume',()=>submit('Saved task continue karo.'));
+    if(data.task_id&&data.company_choices){
+      data.company_choices.forEach(company=>toolButton(tools,company.name,()=>submit(company.name,false,{fields:{company_id:company.id}})));
+    }
+    messages.querySelectorAll('.purchase-answer-controls').forEach(previous=>{previous.hidden=true;});
+    if(data.purchase_assistant)tools.className+=' purchase-answer-controls';
     const messageText = node.querySelector('.business-message-text');
-    window.renderBusinessTally?.(tools, data, {submit, toolButton, connect,
+    schedulePurchaseContext(node,data,originalText);
+    window.renderBusinessTally?.(tools, data, {submit:data.task_id?(text,spoken=false,command={})=>submit(text,spoken,{...command,task_id:data.task_id,expected_revision:data.task_revision,task_inline:true}):submit, toolButton, connect,
       updateMessage:messageText ? text=>{messageText.textContent=text;if(node.chatRecord){node.chatRecord.text=text;persist();}return messageText;} : undefined,
       updateState:result=>{if(node.chatRecord){node.chatRecord.data={...node.chatRecord.data,...result};persist();}},
       renderResult:(target,result)=>renderTools(target,result,originalText)});
@@ -268,10 +509,10 @@
       const title = document.createElement('strong'); title.textContent = preview.title; card.append(title);
       preview.lines.forEach(line => { const p = document.createElement('p'); p.textContent = line; card.append(p); });
       preview.blockers.forEach(line => { const p = document.createElement('p'); p.className = 'business-blocker'; p.textContent = line; card.append(p); });
-      const approve = toolButton(card, preview.send ? 'Confirm & send' : 'Confirm & save', () => approvePreview(preview.token, true, card));
+      const approve = toolButton(card, preview.send ? 'Confirm & send' : 'Confirm & save', () => approvePreview(preview.token, true, card,data));
       approve.disabled = !preview.can_confirm;
-      const cancel=toolButton(card, 'Cancel', () => approvePreview(preview.token, false, card));
-      cancel.disabled=!preview.can_confirm;tools.append(card);
+      const cancel=toolButton(card, 'Cancel', () => approvePreview(preview.token, false, card,data));
+      cancel.disabled=!preview.can_confirm;(tools.querySelector('.purchase-task-panel')||tools).append(card);
     }
   }
   function showToolForm(parent, intent, customer = null) {
@@ -307,18 +548,21 @@
     });
     parent.append(form); form.querySelector('input')?.focus(); scroll.scrollTop = scroll.scrollHeight;
   }
-  async function approvePreview(token, approve, card) {
+  async function approvePreview(token, approve, card, taskData={}) {
     if (busy || root.inert || voiceActive) return;
     busy = true; const id = epoch; resize();
     const buttons = card.querySelectorAll('button'); buttons.forEach(button => { button.disabled = true; });
     transcript.forEach(record=>{if(record.data?.preview?.token===token)record.data.preview.can_confirm=false;});persist();
     requestController = new AbortController(); status.textContent = approve ? 'Process kar raha hoon…' : 'Cancel kar raha hoon…';
     try {
-      const response = await window.fetchWithAuth('/api/v1/business/confirm', {method:'POST',headers:{'Content-Type':'application/json'},
-        signal:requestController.signal,body:JSON.stringify({token,approve})});
+      const response = await window.fetchWithAuth(taskData.task_id?'/api/v1/business/tasks/'+encodeURIComponent(taskData.task_id)+'/approve':'/api/v1/business/confirm', {method:'POST',headers:{'Content-Type':'application/json'},
+        signal:requestController.signal,body:JSON.stringify({token,approve,...(taskData.task_id?{expected_revision:taskData.task_revision}:{})})});
       const data = await response.json().catch(() => ({})); if (id !== epoch) return;
       if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Action complete nahi hua. Status check karein.');
-      const resultNode = addMessage(data.response,'assistant'); renderTools(resultNode, data, 'Status check'); history.push({role:'assistant',content:data.response.slice(0,4000)}); history = history.slice(-10);
+      const resultNode = taskData.task_id?[...messages.children].find(n=>[...n.querySelectorAll('.business-preview-card')].includes(card)):null;
+      const target=resultNode||addMessage(data.response,'assistant');
+      if(resultNode){target.querySelector('.business-message-text').textContent=data.response;if(target.chatRecord)target.chatRecord.text=data.response;target.querySelectorAll('.business-tools').forEach(tool=>tool.remove());}
+      renderTools(target, data, 'Status check'); history.push({role:'assistant',content:data.response.slice(0,4000)}); history = history.slice(-10);
       status.textContent = '';
     } catch (error) {
       if (id === epoch) { const errorNode=addMessage(error.message || 'Status nahi mila. Dobara send na karein; pehle records check karein.','assistant'); renderTools(errorNode, {tally_action:token,response:errorNode.chatRecord.text}, 'Status check'); status.textContent = ''; }
@@ -353,12 +597,15 @@
       try {
         const list=await chatApi('');if(signature!==activeScope)return;
         chatSummaries=list.conversations;
-        const selectedChat=selected==='new'?null:chatSummaries.find(chat=>chat.id===selected)||chatSummaries[0];
+        const selectedChat=selected==='new'?null:chatSummaries.find(chat=>chat.id===selected)||(selected?{id:selected}:chatSummaries[0]);
         if(selectedChat){
           const saved=await chatApi('/'+encodeURIComponent(selectedChat.id));if(signature!==activeScope)return;
           conversationId=saved.id;conversationRevision=saved.revision;transcript=saved.messages;store.selectConversation(conversationId);
         }
-      }catch(error){if(signature===activeScope)storageWarning=error.message+' Browser copy dikhayi gayi hai.';}
+      }catch(error){if(signature===activeScope){
+        if(error.status===404){transcript=[];store.clear();store.selectConversation('new');}
+        else storageWarning=error.message+' Browser copy dikhayi gayi hai.';
+      }}
       if(signature!==activeScope)return;
       renderTranscript();renderChatList();loadingChat=false;
       if(!conversationId&&transcript.length)persist();
@@ -383,7 +630,7 @@
         }).catch(()=>{});
       }
     }
-    history=transcript.map(record=>({role:record.role,content:record.text.slice(0,4000)})).slice(-10);
+    history=transcript.filter(record=>record.text?.trim()).map(record=>({role:record.role,content:record.text.slice(0,4000)})).slice(-10);
     welcome.hidden=transcript.length>0;scroll.scrollTop=scroll.scrollHeight;
   }
   window.addEventListener('business-auth-ready',restoreChat);

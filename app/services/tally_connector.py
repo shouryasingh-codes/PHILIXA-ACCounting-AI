@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 import httpx
+from app.services.tally_transport import async_client
 
 
 class TallyError(Exception):
@@ -88,7 +89,7 @@ class TallyConnector:
 
     async def post(self, xml):
         try:
-            async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client:
+            async with async_client(timeout=15, follow_redirects=False) as client:
                 async with client.stream('POST', self.url, content=xml.encode('utf-8'),
                                          headers={'Content-Type': 'text/xml; charset=utf-8'}) as response:
                     response.raise_for_status()
@@ -102,7 +103,7 @@ class TallyConnector:
         except httpx.HTTPError:
             raise TallyError('Tally reachable nahi hai. Tally kholkar HTTP server aur company check karein.')
 
-    async def collection(self, kind, company=None, voucher_date=None, item_query=None):
+    async def collection(self, kind, company=None, voucher_date=None, item_query=None, from_date=None, supplier_query=None):
         root = ET.Element('ENVELOPE')
         header = tag(root, 'HEADER')
         for key, text in [('VERSION','1'),('TALLYREQUEST','Export'),('TYPE','Collection'),('ID','PhilixaRead')]:
@@ -115,6 +116,8 @@ class TallyConnector:
         if voucher_date:
             for key in ('SVFROMDATE','SVTODATE'):
                 tag(variables,key,voucher_date.replace('-',''), TYPE='Date')
+        if from_date:
+            variables.find('SVFROMDATE').text=from_date.replace('-','')
         if kind == 'StockItem' and voucher_date:
             # Current-period closing stock, not just movements on the as-of day.
             variables.remove(variables.find('SVFROMDATE'))
@@ -140,6 +143,11 @@ class TallyConnector:
             tag(collection,'COMPUTE','PhilixaClosingQty : $$Number:$ClosingBalance')
             tag(collection,'NATIVEMETHOD','PhilixaClosingQty')
         if kind == 'Voucher':
+            if supplier_query is not None:
+                if any(c in supplier_query for c in ('"','\\','\n','\r')):
+                    raise TallyError('Unsupported history supplier characters.')
+                tag(collection,'FILTER','PhilixaPurchaseHistoryFilter')
+                tag(message,'SYSTEM',f'$VoucherTypeName = "Purchase" AND $PartyLedgerName = "{supplier_query}"',TYPE='Formulae',NAME='PhilixaPurchaseHistoryFilter')
             for method in ('AllInventoryEntries.*','AllInventoryEntries.BatchAllocations.*',
                            'AllInventoryEntries.AccountingAllocations.*','AllLedgerEntries.*',
                            'AllLedgerEntries.BillAllocations.*'):

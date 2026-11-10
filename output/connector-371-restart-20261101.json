@@ -1,0 +1,10 @@
+{
+  "graceful_restart": true,
+  "old_processes_exited": true,
+  "new_processes": [
+    31724
+  ],
+  "forced_termination": false,
+  "credential_changed": false,
+  "posting": false
+}

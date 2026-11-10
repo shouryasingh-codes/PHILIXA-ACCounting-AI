@@ -21,8 +21,18 @@ async def list_batches(principal:CurrentPrincipal,db:AsyncSession=Depends(get_db
 
 
 @router.get('/document-batches/{batch_id}')
-async def read_batch(batch_id:str,principal:CurrentPrincipal,db:AsyncSession=Depends(get_db)):
-    return await docs.read_batch(db,principal,batch_id)
+async def read_batch(batch_id:str,principal:CurrentPrincipal,db:AsyncSession=Depends(get_db),trashed:bool=False):
+    return await docs.read_batch(db,principal,batch_id,trashed=trashed)
+
+
+@router.post('/documents/{document_id}/trash')
+async def trash_document(document_id:str,principal:CurrentPrincipal,db:AsyncSession=Depends(get_db)):
+    return await docs.set_trash(db,principal,document_id,trashed=True)
+
+
+@router.post('/documents/{document_id}/restore')
+async def restore_document(document_id:str,principal:CurrentPrincipal,db:AsyncSession=Depends(get_db)):
+    return await docs.set_trash(db,principal,document_id,trashed=False)
 
 
 @router.post('/document-batches/{batch_id}/documents',status_code=202)

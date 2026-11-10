@@ -1,0 +1,13 @@
+{
+  "online": true,
+  "version": "3.7.1",
+  "tally_state": "available",
+  "heartbeat_after_restart": true,
+  "native_reads": [
+    {
+      "company": "Philixa Test",
+      "fresh_stock_read_after_restart": true
+    }
+  ],
+  "posting": false
+}

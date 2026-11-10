@@ -11,7 +11,7 @@ class ClassList {
 class Element {
   constructor(tag='div'){
     this.tag=tag;this.children=[];this.listeners={};this.value='';this.disabled=false;
-    this.hidden=false;this.open=false;this._textContent='';this.classList=new ClassList();
+    this.hidden=false;this.open=false;this.dataset={};this._textContent='';this.classList=new ClassList();
   }
   get textContent(){
     if(this._textContent)return this._textContent;
@@ -54,6 +54,8 @@ function makePage(){
         data={items:[{name:'Cement',unit:'bags'}],suppliers:['UltraTech Cement Ltd']};
       }else if(url.endsWith('/purchase-drafts')&&(!options.method||options.method==='GET')){
         data={drafts:record?[JSON.parse(JSON.stringify(record))]:[]};
+      }else if(url.includes('/review-queue?')){
+        data={bills:record?[{...JSON.parse(JSON.stringify(record)),queue_bucket:'needs_attention',ready:false}]:[],counts:{needs_attention:record?1:0},total:record?1:0};
       }else if(url.includes('/audit')){
         data={events:[{revision:0,kind:'created_from_extraction',created_at:new Date().toISOString()}]};
       }else if(url.includes('/purchase-drafts/draft-split-1')){
@@ -134,6 +136,7 @@ const flush=async()=>{for(let i=0;i<80;i++)await Promise.resolve();};
 
   // Open the extracted draft
   assert.equal(p.get('billDraftList').children.length, 1);
+  assert.ok(requests.some(r=>r.url.includes('/review-queue?')),'Saved review uses the scoped review queue');
   await p.get('billDraftList').children[0].listeners.click();
   await flush();
 
@@ -156,7 +159,7 @@ const flush=async()=>{for(let i=0;i<80;i++)await Promise.resolve();};
   // 3. Verify Extraction Review Banner
   const banner=p.get('billDraftExtractionReview');
   assert.equal(banner.hidden, false, 'Extraction review banner is visible');
-  assert.match(banner.textContent, /95% model confidence/);
+  assert.match(banner.textContent, /95% extraction confidence \(review required\)/);
   assert.match(banner.textContent, /Review required/);
   assert.match(banner.textContent, /Multiple invoices detected/);
 
@@ -182,5 +185,9 @@ const flush=async()=>{for(let i=0;i<80;i++)await Promise.resolve();};
   assert.equal(p.inputs.invoice_number.value, 'INV-2026-001');
   assert.equal(p.get('billDraftDocPanel').hidden, false);
 
+  record.extraction_metadata.source_pages=[2];record.content.unsupported_treatments=['services'];
+  p.get('businessDrafts').close();await p.window.openDraftWithDoc('draft-1');await flush();
+  assert.match(p.get('billDraftDocPage').textContent,/Page 2 \/ 2/,'Split invoice opens its own source page');
+  assert.match(p.get('billDraftExtractionReview').textContent,/Posting blocked: services/);
   console.log('✓ Day 4 side-by-side OCR UI tests passed successfully.');
 })();

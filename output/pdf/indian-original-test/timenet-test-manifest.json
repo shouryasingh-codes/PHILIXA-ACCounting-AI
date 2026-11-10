@@ -1,0 +1,132 @@
+{
+  "source_url": "https://www.sctce.ac.in/uploads/c2/4.3.2%20Computers%20Purchased%20Bill.pdf",
+  "source_page": 10,
+  "full_source_sha256": "aed4846d75d9a0a9ac7d215c14a1ab78b938e59680569ecf36db42394900c294",
+  "source_excerpt_sha256": "44c68f413f039e62750ccd0c955f1bab79ecfd621eda968b2fbf02bf860efd37",
+  "adapted_sha256": "32077a700a3a5ce3dcf8c6a88251ee54def044a8199679af31c643d0deae34ab",
+  "supplier": {
+    "name": "TIMENET SOLUTIONS PVT LTD",
+    "gstin": "32AACCT0612L1ZP",
+    "state": "Kerala",
+    "state_code": "32"
+  },
+  "invoice_number": "TVM/21-22/170",
+  "changes": [
+    {
+      "field": "buyer",
+      "original": "SREE CHITRA THIRUNAL COLLEGE OF ENGINEERING, PAPPANAMCODE, TRIVANDRUM, Kerala, India",
+      "test": "Philixa Test, Haryana, India; GSTIN 06ABCPE1234F1ZF",
+      "reason": "Match existing test-company name and GST registration snapshot; not a real registration claim"
+    },
+    {
+      "field": "place_of_supply",
+      "original": "Kerala (32)",
+      "test": "Haryana (06)",
+      "reason": "Consistent with adapted test buyer"
+    },
+    {
+      "field": "invoice_date",
+      "original": "22 Dec 2021",
+      "test": "02 Nov 2026",
+      "reason": "Existing test FY; EDU-compatible day; NOT original transaction date"
+    },
+    {
+      "field": "due_date",
+      "original": "21 Jan 2022",
+      "test": "02 Dec 2026",
+      "reason": "Preserve original Net30 interval after test-date change"
+    },
+    {
+      "field": "tax_heads",
+      "original": {
+        "CGST_9": "29349.00",
+        "SGST_9": "29349.00"
+      },
+      "test": {
+        "IGST_18": "58698.00"
+      },
+      "reason": "Kerala supplier to Haryana test buyer is interstate; overall tax and grand total unchanged"
+    },
+    {
+      "field": "label",
+      "test": "MODIFIED TEST COPY - NOT A VALID TAX INVOICE",
+      "reason": "Prevent confusing modified test document with issued original"
+    }
+  ],
+  "unchanged": [
+    "Original supplier identity/GSTIN",
+    "Invoice reference",
+    "All six original descriptions, HSNs, quantities12 No each, rates and line amounts",
+    "Taxable326100.00 / overall tax58698.00 / grand total384798.00",
+    "Original scanned texture, low contrast, stamps and historical PO; stamps/PO are source markings and NOT approval of adapted copy"
+  ],
+  "expected_lines": [
+    {
+      "description": "Processor Intel Core I3-10100 (10th Generation)",
+      "hsn": "852852",
+      "quantity": "12",
+      "unit": "No",
+      "rate": "9950.00",
+      "taxable_amount": "119400.00",
+      "gst_percent": "18"
+    },
+    {
+      "description": "Intel 410 Chip Set Mother board or higher with on-board graphics (GIGABYTE)",
+      "hsn": "847330",
+      "quantity": "12",
+      "unit": "No",
+      "rate": "4900.00",
+      "taxable_amount": "58800.00",
+      "gst_percent": "18"
+    },
+    {
+      "description": "8GB DDR4 RAM - 4GB X2, DDR4, 2666MHz (ADATA)",
+      "hsn": "847330",
+      "quantity": "12",
+      "unit": "No",
+      "rate": "1325.00",
+      "taxable_amount": "15900.00",
+      "gst_percent": "18"
+    },
+    {
+      "description": "2.5 inch 240GB SATA III SSD HARD DRIVE (KINGSTON)",
+      "hsn": "852310",
+      "quantity": "12",
+      "unit": "No",
+      "rate": "2050.00",
+      "taxable_amount": "24600.00",
+      "gst_percent": "18"
+    },
+    {
+      "description": "ATX CABINET WITH 450 W SMPS (Zebronics)",
+      "hsn": "847330",
+      "quantity": "12",
+      "unit": "No",
+      "rate": "1350.00",
+      "taxable_amount": "16200.00",
+      "gst_percent": "18"
+    },
+    {
+      "description": "18.5 inch LED Backlit Monitor (Acer 20 inch LED K202 HQLABI HDMI)",
+      "hsn": "852852",
+      "quantity": "12",
+      "unit": "No",
+      "rate": "7600.00",
+      "taxable_amount": "91200.00",
+      "gst_percent": "18"
+    }
+  ],
+  "expected_totals": {
+    "taxable": "326100.00",
+    "IGST": "58698.00",
+    "grand_total": "384798.00",
+    "round_off": "0.00"
+  },
+  "limits": [
+    "Adapted-copy test only; not untouched-original tax-treatment accuracy evidence",
+    "Source HSNs retained verbatim, not tax-classification advice",
+    "Expectations manually transcribed for comparison only; not inserted into Philixa extraction",
+    "No live Philixa extraction or native posting has been claimed",
+    "Original supplier/items/unit and tax masters must be available before posting; missing masters should block rather than substitute synthetic names"
+  ]
+}

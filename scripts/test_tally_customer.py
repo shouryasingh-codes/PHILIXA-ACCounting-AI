@@ -177,13 +177,20 @@ class CustomerDurable(unittest.IsolatedAsyncioTestCase):
             reply=await service.preview_customer(self.db,self.principal,commands.ParsedCommand(intent='customer_create',client_name='Rahul'))
         self.assertNotIn('preview',reply);self.assertIn('silently',reply['response'])
     async def test_old_helper_cannot_consume_customer_jobs_and_v6_checks_approval(self):
-        import json
         from app.models.tally import TallyDevice,TallySnapshot
-        from app.core.redis import get_redis_client,close_redis_pool
-        from app.api.v1.routes_tally_bridge import jobs,helper_status
         device=TallyDevice(id=uuid.uuid4().hex,organization_id=self.org,credential_hash='customer-test-secret',revoked=False)
         self.db.add(device);self.company.device_id=device.id
         snapshot=await self.db.get(TallySnapshot,self.company.id);snapshot.device_version=device.credential_hash;await self.db.commit()
+        # Keep the running sync daemon out of this synthetic endpoint's queue.
+        # A read-only snapshot job is valid for v5 but is unrelated to this test.
+        async with sync.company_lock(self.company.id) as locked:
+            self.assertTrue(locked,'Synthetic endpoint must be isolated from background sync')
+            await self.customer_bridge_contract(device)
+
+    async def customer_bridge_contract(self,device):
+        import json
+        from app.core.redis import get_redis_client,close_redis_pool
+        from app.api.v1.routes_tally_bridge import jobs,helper_status
         a=await self.preview();await sync.confirm_queued(self.db,self.principal,a)
         redis=await get_redis_client();job_id=uuid.uuid4().hex
         keys=['tally:online:','tally:protocol:','tally:v2online:','tally:v3online:','tally:v4online:','tally:v5online:','tally:v6online:','tally:queue:v6:']

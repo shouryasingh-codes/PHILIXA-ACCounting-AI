@@ -101,6 +101,7 @@ services:
       sh -c "arq app.worker.WorkerSettings"
 
   document-worker:
+    restart: unless-stopped
     image: accounts-dev-app
     env_file:
       - .env
@@ -119,21 +120,27 @@ services:
         condition: service_healthy
     volumes:
       - ./app:/app/app
+      - ./data/local-ocr-venv:/app/data/local-ocr-venv:ro
     command: arq app.jobs.document_jobs.DocumentWorkerSettings
 
   tally-worker:
-    build: .
+    restart: unless-stopped
+    # Same document-capable image as intake; automation re-reads original PDFs.
+    image: accounts-dev-app
     env_file:
       - .env
     environment:
       - PHILIXA_DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-philixa}
       - PHILIXA_REDIS_URL=redis://redis:6379/0
+      - PHILIXA_MINIO_URL=minio:9000
     depends_on:
       app:
         condition: service_started
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     volumes:
       - ./app:/app/app

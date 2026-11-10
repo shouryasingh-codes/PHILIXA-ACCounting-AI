@@ -1,0 +1,66 @@
+{
+  "fixtures": [
+    {
+      "task_id": "b0b7fca25d327343008c85e19f2eaace",
+      "filename": "philixa-matching-test-bill.pdf",
+      "document_id": "a0735260406483dc9d95cfcdbee3fc1f",
+      "status": "needs_input",
+      "revision": 0,
+      "extraction_status": "needs_review",
+      "extraction_generation": 0,
+      "draft_count": 1,
+      "draft_ids": [
+        "5843a361aa6dca00a2f8b1d6aff8bcd9"
+      ],
+      "task_action_id": null,
+      "model_responses_with_usage": 0,
+      "usage": [],
+      "tools": [],
+      "created_at": "2026-11-05T20:52:55.122187+00:00",
+      "updated_at": "2026-11-05T20:52:56.277240+00:00"
+    },
+    {
+      "task_id": "9f395f15d7672aa30d6eb7a6339885ce",
+      "filename": "chat-intake-smoke.pdf",
+      "document_id": "c04304aacbd8c5971e9212ded439e933",
+      "status": "needs_input",
+      "revision": 2,
+      "extraction_status": "needs_review",
+      "extraction_generation": 1,
+      "draft_count": 1,
+      "draft_ids": [
+        "16ffe450c6c611158d6ff0f96d2736c2"
+      ],
+      "task_action_id": null,
+      "model_responses_with_usage": 1,
+      "usage": [
+        {
+          "queue_time": 0.365566072,
+          "prompt_tokens": 1948,
+          "prompt_time": 0.114619709,
+          "completion_tokens": 109,
+          "completion_time": 0.118401792,
+          "total_tokens": 2057,
+          "total_time": 0.233021501,
+          "completion_tokens_details": {
+            "reasoning_tokens": 8
+          },
+          "prompt_package": {
+            "version": "task-agent-v2.1",
+            "sha256": "93c1c25eb82ecec8fd8da29d56b05751c4b2bca58833c36f167f296bcfae642a",
+            "example_ids": [
+              "dev-ambiguous-supplier",
+              "dev-history-suggestion"
+            ]
+          }
+        }
+      ],
+      "tools": [
+        "read_bill_fields"
+      ],
+      "created_at": "2026-11-05T21:01:06.542568+00:00",
+      "updated_at": "2026-11-05T21:07:39.030145+00:00"
+    }
+  ],
+  "native_posting_performed": false
+}

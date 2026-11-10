@@ -1,0 +1,11 @@
+# Connector download fix — 26 October 2026
+
+Ngrok request inspection showed repeated authenticated installer GETs returning200 with Content-Length74488448. The old controller awaited the entire response.blob before dispatching a detached download link, offered no immediate feedback and permitted parallel clicks. This can appear unresponsive during a large tunnel transfer. An actual ngrok browser failure was also observed; it does not establish the cause of every user-side failure.
+
+The controller now preflights with authenticated HEAD (including existing session refresh), prevents concurrent click handlers and launches an attached same-origin download link. The browser handles file transfer/progress rather than JavaScript buffering the entire binary. Errors remain visible; owner/admin restrictions are unchanged. GET and HEAD share the existing installer path/authorisation. No credential is put in a URL. Static asset version23.
+
+Validation: connector UI regression passed, including double-click suppression, HEAD-only preflight, native URL delivery and403 rejection. Backend HTTP regression passed: owner HEAD has empty body and correct length/filename, GET returns fixture bytes, member HEAD/GET403, anonymous HEAD401. JavaScript syntax passed.
+
+Live authenticated localhost browser click completed a download to C:/Users/admin/Downloads/PhilixaTallyConnectorSetup (3).exe. Size74488448 and SHA256 match data/downloads/PhilixaTallyConnectorSetup-3.6.0.exe. Installer was not executed. Screenshot output/connector-download-fixed.png.
+
+The app's development reload initially waited for old download connections to close. Only app service was restarted, preserving volumes and other services. Startup took additional time because LiteLLM's remote cost map fetch fell back to its local copy; app subsequently returned200 and served version23. Ngrok process was retained. Public browser end-to-end download completion was not independently verified: initial Visit Site click was blocked by automatic review; after user handoff, the public browser reported connection reset during app reload. Do not label the local completed transfer as an independently completed ngrok transfer. User should reload the public page and click once, then inspect Downloads.

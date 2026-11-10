@@ -9,22 +9,29 @@ class ClassList {
   contains(c){return this.classes.has(c);}
 }
 class Element {
-  constructor(){this.children=[];this.listeners={};this.value='';this.disabled=false;this.hidden=false;this.open=false;this.textContent='';this.classList=new ClassList();}
+  constructor(){this.dataset={};this.children=[];this.listeners={};this.value='';this.disabled=false;this.hidden=false;this.open=false;this.textContent='';this.classList=new ClassList();}
   append(...values){this.children.push(...values);}
   replaceChildren(...values){this.children=[...values];}
   setAttribute(key,value){this[key]=value;}
   addEventListener(name,fn){this.listeners[name]=fn;}
+  click(){return this.listeners.click?.();}
+  dispatchEvent(event){return this.listeners[event.type]?.(event);}
+  checkValidity(){return this.type!=='number'||(Number.isFinite(Number(this.value))&&Number(this.value)>=Number(this.min||0));}
+  querySelectorAll(selector){return this.children.flatMap(c=>typeof c==='object'?[...(c.type==='checkbox'?[c]:[]),...(c.querySelectorAll?.(selector)||[])]:[]);}
   showModal(){this.open=true;}
   close(){this.open=false;this.listeners.close?.();}
 }
-function page(){
+function page(options={}){
   const nodes=new Map();const get=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
   const document={getElementById:get,createElement:()=>new Element()};
   const form=get('billDraftForm');const inputs=Object.fromEntries(keys.map(key=>[key,new Element()]));
   form.elements={namedItem:key=>inputs[key]};form.reset=()=>{for(const input of Object.values(inputs))input.value='';};
   form.querySelectorAll=()=>[get('billDraftSave'),get('billDraftMakePreview')];
-  const window={getBusinessChatScope:()=>scope,fetchWithAuth:async(url,options={})=>{
-    requests.push({url,options});let data;let ok=true;const body=options.body?JSON.parse(options.body):null;
+  const argumentsOverride=options.respond||(()=>undefined);
+  const window={BillReviewMeter:options.reviewMeter,getBusinessChatScope:()=>scope,fetchWithAuth:async(url,options={})=>{
+    requests.push({url,options});
+    const override=await argumentsOverride(url,options);if(override!==undefined)return {ok:true,json:async()=>JSON.parse(JSON.stringify(override))};
+    let data;let ok=true;const body=options.body?JSON.parse(options.body):null;
     const snapshot=()=>JSON.parse(JSON.stringify(record));
     if(url.endsWith('/companies'))data={companies:[{id:'company',name:'Pilot Test'}]};
     else if(url.endsWith('/masters'))data={items:[{name:'Cement',unit:'bags'},{name:'Bricks',unit:'pcs'}],suppliers:['Supplier']};
@@ -39,7 +46,8 @@ function page(){
     else if(url.endsWith('/purchase-drafts')&&options.method==='POST'){
       record={id:'draft',company_id:body.company_id,content:body.content,revision:0,status:'draft',editable:true};
       events=[{revision:0,kind:'created',created_at:new Date().toISOString()}];data=snapshot();
-    }else if(url.endsWith('/purchase-drafts'))data={drafts:record?[snapshot()]:[]};
+    }else if(url.includes('/review-queue?'))data={bills:record?[{...snapshot(),kind:'draft',queue_bucket:record.status==='preview'?'ready':'needs_attention',ready:false}]:[],counts:{needs_attention:record?1:0},total:record?1:0};
+    else if(url.endsWith('/purchase-drafts'))data={drafts:record?[snapshot()]:[]};
     else if(options.method==='PUT'){
       if(body.revision!==record.revision){ok=false;data={detail:'Stale revision'};}
       else{record.content=body.content;record.revision++;events.push({revision:record.revision,kind:'edited',created_at:new Date().toISOString()});data=snapshot();}
@@ -47,7 +55,7 @@ function page(){
     return {ok,json:async()=>JSON.parse(JSON.stringify(data))};
   }};
   const URL={createObjectURL:()=>'blob://mock',revokeObjectURL:()=>{}};
-  vm.runInNewContext(fs.readFileSync('app/web/business-drafts.js','utf8'),{window,document,JSON,Date,console,URL});
+  vm.runInNewContext(fs.readFileSync('app/web/business-drafts.js','utf8'),{window,document,JSON,Date,console,URL,Event});
   const line=index=>Object.fromEntries(['item_name','quantity','unit','rate'].map((key,i)=>[key,get('billDraftLines').children[index].children[i+1].children[0]]));
   return {get,inputs,line};
 }
@@ -80,6 +88,22 @@ if(require.main===module)(async()=>{
   assert.equal(requests.filter(r=>r.url.endsWith('/confirm')).length,1,'stale workspace cannot confirm');
   p.get('workspaceSelect').listeners.change();assert.equal(p.get('businessDrafts').open,false);
   assert.equal(p.get('billDraftList').children.length,0,'scope switch clears draft UI');
+  scope={...scope,organization_id:'workspace'};
+  record={...record,status:'needs_review',editable:true,action_id:null,extraction_metadata:{source:'chat'},
+    content:{...record.content,tax_treatment:'regular_domestic_goods',invoice_total:null,expected_taxes:null}};
+  p=page();p.get('businessDraftsBtn').listeners.click();await flush();
+  await p.get('billDraftList').children[0].listeners.click();await flush();
+  assert.equal(p.get('businessDrafts').dataset.chatSimple,'true','chat working copy defaults to compact mode');
+  assert.equal(p.get('businessDrafts').dataset.chatStep,'1');
+  assert.match(p.get('billDraftTotal').textContent,/GST aur final bill total abhi pending/,'missing GST must not display a misleading final zero-tax total');
+  p.inputs.party_name.value='';p.get('billChatNext').listeners.click();
+  assert.equal(p.get('businessDrafts').dataset.chatStep,'1','missing basic details cannot advance');
+  p.inputs.party_name.value='Supplier';p.get('billChatNext').listeners.click();
+  assert.equal(p.get('businessDrafts').dataset.chatStep,'2');
+  p.get('billChatPrevious').listeners.click();assert.equal(p.get('businessDrafts').dataset.chatStep,'1');
+  const beforeView=requests.length;p.get('billChatFull').listeners.click();
+  assert.equal(p.get('businessDrafts').dataset.chatSimple,'false','full accountant view remains available');
+  assert.equal(requests.length,beforeView,'step/view navigation never saves or approves');
   console.log('PASS: durable reopen, revision history, save-before-preview, explicit approval, pending edit lock and workspace clearing');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 

@@ -24,6 +24,14 @@ async def request_job(device, operation, **parameters):
     try:
         if not await redis.exists('tally:online:' + device.id):
             raise TallyError('Helper offline. Philixa Tally Connector kholkar reconnect karein.')
+        receipt_operation=operation.startswith('goods_receipt_') or bool((parameters.get('config') or {}).get('receipt_link'))
+        if receipt_operation and not await redis.exists('tally:v11online:'+device.id):
+            raise TallyError('Tracked Receipt Note ke liye protocol 11 connector update required. Purchase entry resend nahi hogi.')
+        if operation=='purchase_history_read' and not await redis.exists('tally:v10online:'+device.id):
+            raise TallyError('History ke liye Philixa Tally Connector 3.7 / protocol 10 update karein.')
+        guarded=operation=='invoice_reference_check' or bool((parameters.get('config') or {}).get('invoice_guard'))
+        if guarded and not await redis.exists('tally:v9online:'+device.id):
+            raise TallyError('Update Philixa Tally Connector (protocol 9) for invoice duplicate protection. Saved pairing remains valid.')
         if operation not in ('discover','stock') and not await redis.exists('tally:v2online:'+device.id):
             raise TallyError('Setup needed: update Philixa Tally Connector for saved data and purchase sync.')
         if operation.startswith('stock_count_') and not await redis.exists('tally:v3online:'+device.id):
@@ -39,7 +47,7 @@ async def request_job(device, operation, **parameters):
         if operation.startswith('purchase_multi_') and not await redis.exists('tally:v7online:'+device.id):
             raise TallyError('Update Tally Connector (v7) for multi-item purchase. Saved pairing remains valid.')
         await redis.set('tally:job:' + job_id, json.dumps(job), ex=30)
-        queue = ('tally:queue:v8:' if operation.startswith('purchase_gst_') else 'tally:queue:v7:' if operation.startswith('purchase_multi_') else 'tally:queue:v6:' if operation.startswith('customer_ledger_') else 'tally:queue:v5:' if operation=='mcp_compile' else 'tally:queue:v4:' if operation.startswith('mcp_') else 'tally:queue:v3:' if operation.startswith('stock_count_') else 'tally:queue:' if operation in ('discover','stock') else 'tally:queue:v2:') + device.id
+        queue = ('tally:queue:v11:' if receipt_operation else 'tally:queue:v10:' if operation=='purchase_history_read' else 'tally:queue:v9:' if guarded else 'tally:queue:v8:' if operation.startswith('purchase_gst_') else 'tally:queue:v7:' if operation.startswith('purchase_multi_') else 'tally:queue:v6:' if operation.startswith('customer_ledger_') else 'tally:queue:v5:' if operation=='mcp_compile' else 'tally:queue:v4:' if operation.startswith('mcp_') else 'tally:queue:v3:' if operation.startswith('stock_count_') else 'tally:queue:' if operation in ('discover','stock') else 'tally:queue:v2:') + device.id
         async with redis.pipeline(transaction=True) as pipe:
             pipe.rpush(queue, json.dumps(job))
             pipe.expire(queue, 40)

@@ -26,4 +26,14 @@ class NativeExports(unittest.TestCase):
    for child in list(unit.findall('REPORTINGUQCDETAILS.LIST')):unit.remove(child)
    unit.find('GSTREPUOM').text='BAG'
   with self.assertRaises(TallyError):gst.compile_purchase(cat,p['source'],p['tax_profile'],obj['config'],p['guid'])
+ def test_wrong_ocr_discount_and_amount_never_compile(self):
+  keys={'companies':'Company','tax_units':'TaxUnit','items':'StockItem','ledgers':'Ledger','units':'Unit','groups':'Group','stock_groups':'StockGroup','godowns':'Godown'}
+  cat={k:list(E.parse(ROOT/('accepted-'+kind+'.xml')).getroot()) for k,kind in keys.items()};cat.update(non_gst=False,cost_centres_enabled=False)
+  obj=json.loads((ROOT/'final-intra-proof.json').read_text());p=obj['payload']
+  for change in ('both_discounts','wrong_taxable','wrong_total'):
+   source=copy.deepcopy(p['source'])
+   if change=='both_discounts':source['lines'][0].update(discount_amount='110',discount_percent='10')
+   elif change=='wrong_taxable':source['lines'][0]['taxable_amount']='990'
+   else:source['invoice_total']='999'
+   with self.assertRaises(TallyError,msg=change):gst.compile_purchase(cat,source,p['tax_profile'],obj['config'],p['guid'])
 if __name__=='__main__':unittest.main()

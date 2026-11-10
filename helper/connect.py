@@ -1,4 +1,4 @@
-"""Philixa Tally Connector unsigned Windows pilot. Only outbound HTTPS and local reads."""
+"""Philixa Tally Connector legacy/MSIX runtime. Outbound hosted HTTPS; local Tally XML."""
 import asyncio
 import base64
 import ctypes
@@ -20,11 +20,14 @@ import httpx
 import psutil
 import pystray
 from PIL import Image, ImageDraw
-from helper.runtime import VERSION, EXE, register_startup, remove_startup, read_settings, write_settings, milestone, backoff, TASK
+from helper.runtime import HOME, VERSION, EXE, register_startup, remove_startup, read_settings, write_settings, milestone, backoff, TASK
 from app.services.tally_connector import local_operation, TallyError
+from app.services.tally_transport import sync_client, async_client, tls_context
 from app.services.tally_sync_protocol import execute_sync, OPERATIONS, PROTOCOL_VERSION
 
-HOME = Path(os.environ['LOCALAPPDATA']) / 'PhilixaConnect'
+from helper.package_runtime import is_packaged, startup_state, startup_enabled
+from helper.network_diagnostics import record_failure
+from helper.pairing_state import reuse_saved_pairing
 CONFIG = HOME / 'settings.json'
 TARGET = 'PhilixaConnect/device'
 os.environ['PHILIXA_TALLY_HOST'] = '127.0.0.1'
@@ -57,6 +60,7 @@ def claim_instance(installer=False):
     global INSTANCE_HANDLE
     import getpass, hashlib
     name='Local\\PhilixaTallyConnector-'+hashlib.sha256(getpass.getuser().encode()).hexdigest()[:12]+('-setup' if installer else '')
+    ctypes.set_last_error(0)
     INSTANCE_HANDLE=kernel.CreateMutexW(None,False,name)
     if ctypes.get_last_error()==183:
         kernel.SetEvent(kernel.CreateEventW(None,True,False,SHOW_EVENT+('-setup' if installer else '')))
@@ -64,7 +68,37 @@ def claim_instance(installer=False):
         return False
     return True
 
+
+def claim_packaged_instance():
+    """Ask only the legacy process to drain. Never kill or steal the shared lock."""
+    legacy = Path(os.environ['LOCALAPPDATA']) / 'PhilixaConnect' / 'PhilixaConnect.exe'
+    active = False
+    for process in psutil.process_iter(['exe']):
+        try:
+            if process.info['exe'] and Path(process.info['exe']).resolve() == legacy.resolve():
+                active = True
+        except (psutil.Error, OSError):
+            continue
+    if not active:
+        return claim_instance()
+    handle = kernel.CreateEventW(None, True, False, STOP_EVENT)
+    try:
+        kernel.SetEvent(handle)
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if claim_instance():
+                return True
+            time.sleep(1)
+    finally:
+        kernel.CloseHandle(handle)
+    ctypes.windll.user32.MessageBoxW(None,
+        'Legacy Connector is finishing work. No data was migrated. Open Philixa Connector again after it exits.',
+        'Philixa migration waiting', 64)
+    return False
+
 def start_managed():
+    if is_packaged():
+        raise RuntimeError('Packaged app launches through Windows')
     result=subprocess.run(['schtasks.exe','/Run','/TN',TASK],capture_output=True,
                           creationflags=subprocess.CREATE_NO_WINDOW,timeout=15)
     if result.returncode:raise RuntimeError('Automatic startup unavailable. Reinstall Tally Connector from Philixa.')
@@ -84,6 +118,8 @@ def load_secret():
     finally: advapi.CredFree(cred)
 
 def install():
+    if is_packaged():
+        raise RuntimeError('Windows Store manages this installation')
     if not getattr(sys, 'frozen', False): raise RuntimeError('Install packaged executable only')
     HOME.mkdir(parents=True, exist_ok=True)
     destination = EXE
@@ -118,6 +154,8 @@ def install():
     milestone('install_complete')
 
 def uninstall():
+    if is_packaged():
+        raise RuntimeError('Uninstall this package through Windows Settings')
     remove_startup()
     kernel.SetEvent(kernel.CreateEventW(None,True,False,STOP_EVENT))
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
@@ -192,10 +230,16 @@ def execute_unlocked(job, port):
     if operation not in OPERATIONS: raise ValueError('Unexpected operation')
     parameters = {}
     if operation == 'stock':
-        for key, limit in [('company',200),('identity',250),('as_of',10),('item_query',200)]:
+        for key, limit in [('company',200),('identity',250),('as_of',10)]:
             value = job.get(key)
             if not isinstance(value,str) or not value or len(value)>limit: raise ValueError('Invalid job')
             parameters[key] = value
+        # None means an unfiltered stock read, as defined by local_operation.
+        # A missing filter is not a missing company/date or an invalid job.
+        query = job.get('item_query')
+        if query is not None and (not isinstance(query, str) or not query.strip() or len(query)>200):
+            raise ValueError('Invalid stock filter')
+        parameters['item_query'] = query
         from datetime import date
         date.fromisoformat(parameters['as_of'])
     if operation in ('discover','stock'):
@@ -211,6 +255,13 @@ def execute_unlocked(job, port):
     if operation=='snapshot_start':
         from datetime import date
         date.fromisoformat(job['as_of']);parameters['as_of']=job['as_of']
+    elif operation=='purchase_history_read':
+        from app.services.tally_purchase_history import validate_query
+        parameters['payload']=validate_query(job.get('payload'))
+        parameters.update(generation=job.get('generation'),page=job.get('page'))
+    elif operation=='invoice_reference_check':
+        if not isinstance(job.get('payload'),dict):raise ValueError('Invalid invoice evidence')
+        parameters['payload']=job['payload']
     elif operation=='snapshot_page':
         if not re.fullmatch('[a-f0-9]{32}',job.get('generation','')) or type(job.get('page'))!=int:raise ValueError('Invalid page')
         parameters.update(generation=job['generation'],page=job['page'])
@@ -236,11 +287,12 @@ class Connect:
         self.closing=False; self.pending_until=0; self.last_health=0; self.health={}
         self.settings = read_settings()
         self.pending_until=time.monotonic()+max(0,self.settings.get('pair_expires_at',0)-time.time())
-        self.installer=getattr(sys,'frozen',False) and Path(sys.executable).resolve()!=EXE.resolve()
+        self.installer=getattr(sys,'frozen',False) and not is_packaged() and Path(sys.executable).resolve()!=EXE.resolve()
         saved = load_secret()
         try: credential = json.loads(saved) if saved else {}
         except ValueError: credential = {}
         self.secret = credential.get('secret',''); self.secret_origin = credential.get('origin','')
+        self.pairing_rejected = False
         self.base = tk.StringVar(value=self.settings.get('base',''))
         self.local_test = tk.BooleanVar(value=self.settings.get('local_test',False))
         saved_port = self.settings.get('port')
@@ -256,6 +308,7 @@ class Connect:
             tk.Label(self.root,text='Philixa website address').pack()
             tk.Entry(self.root,textvariable=self.base,width=60).pack(pady=5)
             tk.Button(self.root,text='Generate connection code',command=self.pair).pack(pady=8)
+            tk.Button(self.root,text='Reconnect saved connection',command=self.reconnect_saved).pack(pady=3)
             tk.Button(self.root,text='Pause / resume automatic connection',command=self.toggle_pause).pack(pady=5)
             self.advanced=tk.Frame(self.root)
             tk.Button(self.root,text='Advanced settings',command=lambda: self.advanced.pack(pady=5) if not self.advanced.winfo_ismapped() else self.advanced.pack_forget()).pack()
@@ -338,30 +391,59 @@ class Connect:
         return url
     def pair(self):
         if self.connected: self.notify('Already paired. Use Change connected PC on the website only when replacing this connection.'); return
+        if reuse_saved_pairing(bool(self.secret), self.secret_origin, self.base.get(), self.pairing_rejected):
+            self.notify('Saved pairing retained. Reconnecting; no new code needed.')
+            self.reconnect_saved()
+            return
         try: url = self.config(pairing=True)
         except ValueError as exc: self.notify(str(exc)); return
         def run():
             try:
-                with httpx.Client(timeout=15,follow_redirects=False,trust_env=False) as client:
+                with sync_client(timeout=15,follow_redirects=False) as client:
                     response = client.post(url+'/pairing/begin'); response.raise_for_status(); data = response.json()
                 origin=self.settings['base'].rstrip('/')
                 save_secret(json.dumps({'secret':data['credential'],'origin':origin})); self.secret = data['credential'];self.secret_origin=origin
                 self.pending_until=time.monotonic()+data.get('expires_in',600)
                 self.settings.update(paused=False,pair_code=data['code'],pair_expires_at=time.time()+data.get('expires_in',600));write_settings(self.settings)
                 self.root.after(0,self.code_ready,data['code'])
-            except Exception: self.notify('Pairing unavailable. Check hosted address/network and retry.')
+            except Exception as exc:
+                try: record_failure(exc, HOME)
+                except Exception: milestone('diagnostic_write_failed')
+                self.notify('Pairing unavailable. Check hosted address/network and retry; diagnostics saved.')
         threading.Thread(target=run,daemon=True).start()
     def code_ready(self, code):
+        self.pairing_rejected = False
         self.pair_code.set(code)
         self.status.set('Connection code: '+code+' (10 minutes). Philixa page par ye code dalein aur Connect dabayein.')
         self.connect()
+    def reconnect_saved(self):
+        if not self.secret:
+            self.notify('No saved connection. Generate a pairing code first.')
+            return
+        self.settings['paused'] = False
+        write_settings(self.settings)
+        if self.connected:
+            if self.stop.is_set():
+                self.notify('Finishing the current connection before reconnecting.')
+                self.root.after(500,self.resume_when_idle)
+                return
+            self.notify('Connection is already running; checking automatically.')
+            return
+        self.connect()
     def connect(self):
         if self.connected or self.settings.get('paused'): return
+        milestone('connect_start')
         try: url = self.config()
         except ValueError as exc: self.notify(str(exc)); return
         if not self.secret: self.notify('Generate pairing code first.'); return
         self.stop.clear(); self.connected = True
-        threading.Thread(target=self.poll,args=(url,self.secret),daemon=True).start()
+        self.notify('Connecting with saved pairing; checking Philixa and Tally…')
+        try:
+            threading.Thread(target=self.poll,args=(url,self.secret),daemon=True).start()
+        except Exception:
+            self.connected = False
+            self.notify('Connection worker could not start. Use Reconnect saved connection to retry.')
+            milestone('connection_worker_start_failed')
     def disconnect(self): self.stop.set(); self.notify('Automatic connection paused. Resume when ready.')
     def close(self):
         with self.lifecycle_lock:
@@ -389,7 +471,11 @@ class Connect:
         try:
             mcp_build=json.loads(manifest.read_text(encoding='utf-8')).get('commit')
         except (OSError,ValueError):pass
-        return {'connector_version':VERSION,'startup_configured':bool(self.settings.get('startup_configured')),
+        startup = startup_state()
+        configured = startup_enabled(startup) if is_packaged() else bool(self.settings.get('startup_configured'))
+        return {'connector_version':VERSION,'startup_configured':configured,
+                'package_kind':'msix' if is_packaged() else 'legacy',
+                'startup_state':startup, 'transport_state':'ready',
                 'mcp_build':mcp_build,'mcp_state':'disabled' if mcp_build else 'missing',
                 'tally_state':state,'error_code':None if state=='available' else 'tally_closed' if state=='closed' else 'http_unreachable',
                 'companies':[{'identity':c['identity'],'reachable':(c['identity'],c['name']) in present} for c in approved]}
@@ -397,21 +483,26 @@ class Connect:
     def poll(self,url,secret):
         try:
             failures=0
-            with httpx.Client(timeout=15,headers={'Authorization':'Bearer '+secret},follow_redirects=False,trust_env=False) as client:
+            with sync_client(timeout=15,headers={'Authorization':'Bearer '+secret},follow_redirects=False) as client:
                 while not self.stop.is_set():
                     try:
                         response = client.get(url+'/helper/jobs',params={'protocol_version':PROTOCOL_VERSION})
                         if response.status_code == 401:
                             if time.monotonic()<self.pending_until:
                                 self.stop.wait(3);continue
+                            self.pairing_rejected = True
                             self.notify('Pairing expired or revoked. Generate a new code and explicitly replace the PC on Philixa.');milestone('pairing_required');break
                         response.raise_for_status(); failures=0;self.pending_until=0;envelope=response.json();job = envelope['job']
                         if not job and time.monotonic()-self.last_health>20:
                             self.health=self.check_health(envelope.get('approved_companies',[]))
                             client.post(url+'/helper/heartbeat',json=self.health).raise_for_status()
+                            if is_packaged() and self.health.get('tally_state') == 'available' and self.health.get('companies') and all(c['reachable'] for c in self.health['companies']):
+                                from helper.legacy_retirement import retire_after_verified_read
+                                try: retire_after_verified_read(HOME, TASK, startup_enabled(self.health['startup_state']))
+                                except Exception: milestone('legacy_retirement_pending')
                             self.last_health=time.monotonic()
                         if not job:
-                            if not self.settings.get('startup_configured'):self.notify('Connector online; automatic startup not configured. Run the installer to complete setup.')
+                            if not self.health.get('startup_configured'):self.notify('Connector online; startup is off. Check Windows Startup Apps.' if is_packaged() else 'Connector online; automatic startup not configured. Run the installer to complete setup.')
                             else:self.notify('Connector online. '+{'closed':'Tally closed; waiting automatically.','available':'Tally reachable.','unreachable':'Enable Tally HTTP server; retry is automatic.'}.get(self.health.get('tally_state'),'Checking Tally…'))
                             self.stop.wait(2);continue
                         if job.get('device_id') != envelope['device_id']: raise ValueError('Wrong device job')
@@ -420,9 +511,21 @@ class Connect:
                         with self.lifecycle_lock:
                             if self.stop.is_set() or self.closing:break
                             self.busy=True
+                        invalid_job = False
                         for port in ports:
                             try: result = execute(job,port); break
                             except TallyError: continue
+                            except (ValueError, TypeError, KeyError):
+                                if job['operation'] not in ('stock', 'discover'): raise
+                                # Return a terminal read error instead of dropping a consumed
+                                # job and leaving its caller waiting for the result timeout.
+                                result = None
+                                payload = {'id':job['id'],'error':'Read failed'}
+                                published = client.post(url+'/helper/results',json=payload)
+                                if published.status_code not in (200,410): published.raise_for_status()
+                                invalid_job = True
+                                break
+                        if invalid_job: continue
                         if result is None:
                             error = 'Setup needed: enable Tally HTTP server' if running else 'Tally closed'
                             # A successful discovery but unavailable selected identity is distinct.
@@ -440,9 +543,19 @@ class Connect:
                         published = client.post(url+'/helper/results',json=payload)
                         if published.status_code not in (200,410): published.raise_for_status()
                     except Exception as exc:
+                        if isinstance(exc, FileNotFoundError):
+                            try: record_failure(exc, HOME)
+                            except Exception: milestone('diagnostic_write_failed')
+                            self.notify('Required Connector resource missing. Diagnostics saved; Connector update/support required.')
+                            break
                         failures+=1;milestone('retry',type(exc).__name__)
                         self.notify('Philixa unavailable; reconnecting automatically.'); self.stop.wait(backoff(failures))
                     finally:self.busy=False
+        except Exception as exc:
+            milestone('poll_start_failed',type(exc).__name__)
+            try: record_failure(exc, HOME)
+            except Exception: milestone('diagnostic_write_failed')
+            self.notify('Network startup failed; diagnostics saved. Use Reconnect saved connection to retry. Saved pairing is retained.')
         finally: self.connected = False
 
 if __name__ == '__main__':
@@ -461,6 +574,87 @@ if __name__ == '__main__':
             result={'installed':False,'error_type':type(exc).__name__}
         Path(sys.argv[sys.argv.index('--install-only')+1]).write_text(json.dumps(result))
         sys.exit(0 if result.get('installed') else 1)
+    elif '--transport-self-test' in sys.argv:
+        result={}
+        try:
+            with sync_client(timeout=10) as client:
+                result['client_ready']=True
+            async def async_probe():
+                async with async_client(timeout=10) as client:
+                    return True
+            result['async_client_ready']=asyncio.run(async_probe())
+            import ssl, certifi
+            context=tls_context()
+            result['certificate_validation']=context.verify_mode==ssl.CERT_REQUIRED and context.check_hostname
+            result['ca_exists']=Path(certifi.where()).is_file()
+        except Exception as exc:
+            result={'error':type(exc).__name__}
+            try: result['diagnostic']=record_failure(exc, HOME)
+            except Exception: pass
+        Path(sys.argv[sys.argv.index('--transport-self-test')+1]).write_text(json.dumps(result))
+        sys.exit(1 if 'error' in result else 0)
+    elif '--history-self-test' in sys.argv:
+        # Synthetic catalog/vouchers only; never contacts or writes to Tally.
+        from xml.etree import ElementTree as ET
+        from app.services.tally_purchase_history import normalise_vouchers,validate_query
+        from app.services.tally_connector import tag
+        result={}
+        try:
+            supplier=ET.Element('LEDGER',NAME='Supplier');tag(supplier,'GUID','supplier-test');tag(supplier,'PARENT','Sundry Creditors')
+            item=ET.Element('STOCKITEM',NAME='Cement');tag(item,'GUID','item-test');tag(item,'BASEUNITS','bags')
+            query=validate_query(dict(supplier='Supplier',supplier_id='guid:supplier-test',items=[dict(name='Cement',id='guid:item-test')],from_date='2026-09-01',to_date='2026-10-02'))
+            voucher=ET.Element('VOUCHER')
+            for key,text in [('VOUCHERTYPENAME','Purchase'),('PARTYLEDGERNAME','Supplier'),('GUID','native-test'),('ALTERID','1'),('REFERENCE','INV-TEST'),('DATE','20261002')]:tag(voucher,key,text)
+            line=ET.SubElement(voucher,'ALLINVENTORYENTRIES.LIST')
+            for key,text in [('STOCKITEMNAME','Cement'),('BILLEDQTY','5 bags'),('RATE','350/bags'),('AMOUNT','-1750')]:tag(line,key,text)
+            records,issues=normalise_vouchers([voucher],{'ledgers':[supplier],'items':[item]},query)
+            assert PROTOCOL_VERSION>=10 and len(records)==1 and not issues and records[0]['rate']=='350'
+            result={'protocol_version':PROTOCOL_VERSION,'history_read':True,'native_identity':True,'real_tally_called':False}
+        except Exception as exc:result={'error':type(exc).__name__}
+        Path(sys.argv[sys.argv.index('--history-self-test')+1]).write_text(json.dumps(result))
+        sys.exit(1 if 'error' in result else 0)
+    elif '--receipt-self-test' in sys.argv:
+        from xml.etree import ElementTree as ET
+        from app.services.tally_goods_receipt import receipt_xml,verify,RECEIPT_CODEC_CERTIFIED
+        from app.services.tally_receipt_link import linked_xml,verify_tracking
+        from app.services.tally_connector import voucher_xml
+        result={}
+        try:
+            p={'operation':'goods_receipt','company':'Synthetic Test','party':'Supplier','godown':'Main Location','ledger':'Purchase',
+                'date':'2026-10-02','guid':'30000000-0000-0000-0000-000000000001','tracking':'PH-GRN-synthetic-test',
+                'items':[{'item':'Cement','quantity':'5','unit':'bags','rate':'350.00'}],'master_fingerprint':'test'}
+            v=ET.fromstring(receipt_xml(p)).find('.//VOUCHER');assert verify(v,p)
+            purchase={**p,'operation':'purchase_multi','voucher_type':'Purchase',**p['items'][0],'total':'1750.00'}
+            purchase['guid']='30000000-0000-0000-0000-000000000002'
+            linked=ET.fromstring(linked_xml(voucher_xml(purchase),purchase,p)).find('.//VOUCHER')
+            assert verify_tracking(linked,purchase,p) and PROTOCOL_VERSION>=11
+            result={'receipt_codecs':True,'protocol_version':PROTOCOL_VERSION,'native_posting_enabled':RECEIPT_CODEC_CERTIFIED,'real_tally_called':False}
+        except Exception as exc:result={'error':type(exc).__name__}
+        Path(sys.argv[sys.argv.index('--receipt-self-test')+1]).write_text(json.dumps(result))
+        sys.exit(1 if 'error' in result else 0)
+    elif '--invoice-self-test' in sys.argv:
+        from xml.etree import ElementTree as ET
+        # Packaged Day 7 guard test: only synthetic XML, no HTTP/pairing/write calls.
+        from types import SimpleNamespace
+        from app.services.purchase_identity import invoice_guard,check_native
+        from app.services.tally_connector import tag
+        result={}
+        try:
+            supplier=ET.Element('LEDGER',NAME='Supplier');tag(supplier,'GUID','supplier-test');tag(supplier,'PARENT','Sundry Creditors')
+            catalog={'ledgers':[supplier],'items':[]}
+            guard=invoice_guard('company-test',catalog,{'party_name':'Supplier','invoice_number':'INV-7','entry_date':'2026-10-02'})
+            voucher=ET.Element('VOUCHER')
+            for key,text in [('VOUCHERTYPENAME','Purchase'),('PARTYLEDGERNAME','Supplier'),('REFERENCE','INV-7'),('DATE','20260930')]:tag(voucher,key,text)
+            async def masters(company):return catalog
+            async def vouchers(kind,company,stamp,from_date=None):
+                assert (stamp,from_date)==('2027-03-31','2026-04-01')
+                return [voucher]
+            checked=asyncio.run(check_native(SimpleNamespace(catalog=masters,collection=vouchers),'Company',guard))
+            assert checked['status']=='duplicate' and PROTOCOL_VERSION>=9
+            result={'protocol_version':PROTOCOL_VERSION,'duplicate_blocked':True,'full_financial_year':True,'real_tally_called':False}
+        except Exception as exc:result={'error':type(exc).__name__}
+        Path(sys.argv[sys.argv.index('--invoice-self-test')+1]).write_text(json.dumps(result))
+        sys.exit(1 if 'error' in result else 0)
     elif '--gst-self-test' in sys.argv:
         result={}
         try:
@@ -523,15 +717,18 @@ if __name__ == '__main__':
             complete=uninstall()
             messagebox.showinfo('Uninstalled', 'Startup and credential removed.' + ('' if complete else f' Close helper, then delete {HOME / "PhilixaConnect.exe"}.'))
     else:
-        installer=getattr(sys,'frozen',False) and Path(sys.executable).resolve()!=EXE.resolve()
-        if getattr(sys,'frozen',False) and not installer and '--managed' not in sys.argv:
+        installer=getattr(sys,'frozen',False) and not is_packaged() and Path(sys.executable).resolve()!=EXE.resolve()
+        if getattr(sys,'frozen',False) and not is_packaged() and not installer and '--managed' not in sys.argv:
             try:start_managed()
             except Exception as exc:
                 milestone('managed_launch_failed',type(exc).__name__)
                 ctypes.windll.user32.MessageBoxW(None,'Automatic startup unavailable. Reinstall from Philixa → Download Tally Connector. Existing pairing will be preserved.','Philixa Tally Connector',16)
                 sys.exit(1)
-        elif claim_instance(installer):
+        elif (claim_packaged_instance() if is_packaged() else claim_instance(installer)):
             try:
+                if is_packaged():
+                    from helper.migration import migrate
+                    migrate(Path(os.environ['LOCALAPPDATA'])/'PhilixaConnect', HOME)
                 milestone('launch');Connect().root.mainloop()
             except Exception as exc:
                 milestone('startup_failed',type(exc).__name__)

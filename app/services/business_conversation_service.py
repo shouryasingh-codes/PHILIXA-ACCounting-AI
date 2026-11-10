@@ -11,6 +11,7 @@ from app.models.business_conversation import BusinessConversation
 
 
 class ChatMessage(BaseModel):
+    message_id: str | None = Field(default=None,max_length=64)
     role: Literal['user','assistant']
     text: str = Field(max_length=100000)
     data: dict | None = None
@@ -32,9 +33,14 @@ class ConversationCreate(BaseModel):
     organization_id: str
 
 
-async def scoped_conversation(db,principal,conversation_id,lock=False):
+class ConversationRevision(BaseModel):
+    revision: int = Field(ge=0)
+
+
+async def scoped_conversation(db,principal,conversation_id,lock=False,include_deleted=False):
     query=select(BusinessConversation).where(BusinessConversation.id==conversation_id,
         BusinessConversation.organization_id==principal.organization_id,BusinessConversation.user_id==principal.user_id)
+    if not include_deleted: query=query.where(BusinessConversation.deleted_at.is_(None))
     if lock:query=query.with_for_update().execution_options(populate_existing=True)
     row=await db.scalar(query)
     if row is None:raise HTTPException(404,'Chat nahi mili.')
@@ -47,7 +53,7 @@ def summary(row):
 
 async def list_conversations(db,principal):
     rows=await db.scalars(select(BusinessConversation).where(BusinessConversation.organization_id==principal.organization_id,
-        BusinessConversation.user_id==principal.user_id).order_by(BusinessConversation.updated_at.desc(),BusinessConversation.id.desc()).limit(100))
+        BusinessConversation.user_id==principal.user_id,BusinessConversation.deleted_at.is_(None)).order_by(BusinessConversation.updated_at.desc(),BusinessConversation.id.desc()).limit(100))
     return {'conversations':[summary(row) for row in rows]}
 
 
@@ -62,7 +68,8 @@ async def create_conversation(db,principal,request):
 
 async def read_conversation(db,principal,conversation_id):
     row=await scoped_conversation(db,principal,conversation_id)
-    messages=copy.deepcopy(row.messages)
+    from app.services.chat_attachments import transcript
+    messages=await transcript(db,principal,row,copy.deepcopy(row.messages))
     if row.session_id!=principal.session_id:
         for message in messages:
             if message.get('data',{}).get('preview'):
@@ -75,8 +82,28 @@ async def save_conversation(db,principal,conversation_id,request):
     row=await scoped_conversation(db,principal,conversation_id,lock=True)
     if row.revision!=request.revision:raise HTTPException(409,'Chat doosre tab mein badli hai. Dobara kholein.')
     row.messages=[message.model_dump(exclude_none=True) for message in request.messages]
-    row.title=next((message.text.strip()[:100] for message in request.messages if message.role=='user' and message.text.strip()),'New chat')
+    row.title=next((message.text.strip()[:100] for message in request.messages if message.role=='user' and message.text.strip()),row.title or 'New chat')
     row.session_id=principal.session_id
     row.revision+=1;row.updated_at=datetime.now(timezone.utc)
     await db.commit()
+    return summary(row)
+
+
+async def delete_conversation(db,principal,conversation_id,revision):
+    row=await scoped_conversation(db,principal,conversation_id,lock=True,include_deleted=True)
+    if row.deleted_at is None:
+        if row.revision!=revision: raise HTTPException(409,'Chat badal gayi hai. Refresh karke delete karein.')
+        row.deleted_at=datetime.now(timezone.utc)
+        row.revision+=1
+        await db.commit()
+    return {'id':row.id,'revision':row.revision,'deleted':True}
+
+
+async def restore_conversation(db,principal,conversation_id,revision):
+    row=await scoped_conversation(db,principal,conversation_id,lock=True,include_deleted=True)
+    if row.revision!=revision: raise HTTPException(409,'Chat badal gayi hai. Refresh karke retry karein.')
+    if row.deleted_at is not None:
+        row.deleted_at=None
+        row.revision+=1
+        await db.commit()
     return summary(row)

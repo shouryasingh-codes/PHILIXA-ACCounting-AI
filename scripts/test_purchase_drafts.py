@@ -14,12 +14,17 @@ import scripts.test_tally_sync as fixtures
 
 
 class DraftTests(unittest.IsolatedAsyncioTestCase):
-    asyncSetUp = fixtures.DurableTests.asyncSetUp
+    async def asyncSetUp(self):
+        await fixtures.DurableTests.asyncSetUp(self)
+        from scripts.purchase_fixture_support import master_ids
+        await master_ids(self.db,self.company.id)
+        guard=patch('app.services.purchase_memory_service.live_check',AsyncMock())
+        guard.start();self.addCleanup(guard.stop)
     asyncTearDown = fixtures.DurableTests.asyncTearDown
 
     async def create(self, content=None):
         return await drafts.create_draft(self.db,self.principal,drafts.DraftCreate(
-            company_id=self.company.id,content=content or {}))
+            company_id=self.company.id,content={**(content or {}),'invoice_number':'TEST-INVOICE'}))
 
     async def test_partial_draft_survives_session_restart_without_action(self):
         row=await self.create({'party_name':'Supplier'})

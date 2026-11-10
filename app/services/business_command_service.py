@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.provider import get_ai_provider
+from app.ai.groq_gateway import QuotaDeferred
 from app.api.v1.routes_voice import BusinessTurn, BusinessChatRequest, business_chat
 from app.core.config import get_settings
 from app.core.redis import get_redis_client
@@ -52,6 +53,11 @@ class CommandFields(BaseModel):
     unit: str | None = Field(default=None, max_length=50)
     godown: str | None = Field(default=None, max_length=200)
     invoice_number: str | None = Field(default=None, max_length=100)
+    purchase_tax_review: bool = False
+    purchase_context: str | None = Field(default=None,pattern=r'^[a-f0-9]{32}$')
+    purchase_lines: list[dict] | None = Field(default=None,min_length=1,max_length=100)
+    purchase_mentions: list[dict] | None = Field(default=None,max_length=1000)
+    source_message: str | None = Field(default=None,max_length=4000)
     entry_date: date | None = None
     target_quantity: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=6)
     counted_at: datetime | None = None
@@ -66,7 +72,21 @@ class ParsedCommand(CommandFields):
     intent: Intent
 
 
+class ChatAttachmentRef(BaseModel):
+    document_id:str=Field(pattern=r'^[a-f0-9]{32}$')
+
+
 class CommandRequest(BaseModel):
+    candidate_task_id: str | None = Field(default=None,pattern=r'^[a-f0-9]{32}$')
+    routing_retry_of: str | None = Field(default=None,pattern=r'^[a-f0-9]{32}$')
+    attachments:list[ChatAttachmentRef]=Field(default_factory=list,max_length=50)
+    conversation_id: str | None = Field(default=None,pattern=r'^[a-f0-9]{32}$')
+    conversation_revision: int | None = Field(default=None,ge=0)
+    selection: dict | None = None
+    context_refresh: bool = False
+    task_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+    expected_revision: int | None = Field(default=None, ge=0)
+    request_id: str | None = Field(default=None, min_length=16, max_length=64)
     text: str = Field(default="", max_length=4000)
     conversation_history: list[BusinessTurn] = Field(default_factory=list, max_length=10)
     intent: Intent | None = None
@@ -156,6 +176,9 @@ def guard_tally_scope(request: CommandRequest, parsed: ParsedCommand) -> ParsedC
     if parsed.intent in ('purchase_create','sale_create','inventory_add','inventory_change','stock_count_set'):
         scope_text=context_text
         scope_text=re.sub(r'\bnon[-\s]?gst\b|\bwithout\s+gst\b|\bgst\s+(?:ke\s+)?(?:bina|nahi)\b|बिना\s+जीएसटी','',scope_text,flags=re.I)
+        if parsed.intent=='purchase_create':
+            if re.search(r'\b(gst|cgst|sgst|igst|tax|discount)\b|जीएसटी|टैक्स|छूट',scope_text,re.I):parsed.purchase_tax_review=True
+            scope_text=re.sub(r'\b(gst|cgst|sgst|igst|tax|discount)\b|जीएसटी|टैक्स|छूट','',scope_text,flags=re.I)
         if re.search(r'\b(gst|cgst|sgst|igst|tax|discount|batch\w*|serial\w*|transfer)\b|जीएसटी|टैक्स|छूट|ट्रांसफर',scope_text,re.I):
             parsed.unsupported_reason='Advanced tax/batch/transfer request unsupported.';return parsed
         if re.search(r'\d.*?\b(?:aur|and)\b.*?\d|\d.*?और.*?\d',scope_text,re.I):
@@ -174,6 +197,8 @@ def guard_tally_scope(request: CommandRequest, parsed: ParsedCommand) -> ParsedC
     if not request.intent and parsed.intent=='stock_count_set' and not re.search(r'\b(actual|physical|counted|ginti)\b|गिनती|असल',context_text,re.I):
         parsed.intent='inventory_change';return parsed
     if not request.intent and parsed.intent=='purchase_create' and not re.search(r'\b(purchase|bought|buy|kharid\w*)\b|खरीद',context_text,re.I):
+        if parsed.purchase_tax_review:
+            parsed.unsupported_reason='GST entry ke liye operation clear karein: purchase bill hai ya koi aur transaction?';return parsed
         parsed.intent='inventory_add' if re.search(r'\b(add|aaye|aaya|received)\b|जोड़|आए',context_text,re.I) else 'inventory_change';return parsed
     if parsed.intent not in ('purchase_create','sale_create'):
 
@@ -183,9 +208,11 @@ def guard_tally_scope(request: CommandRequest, parsed: ParsedCommand) -> ParsedC
     if not request.intent and parsed.intent=='purchase_create' and re.search(r'\b(add|aaye|aaya|received)\b|जोड़|आए',text,re.I) and not re.search(r'\b(purchase|bought|buy|kharid\w*)\b|खरीद',text,re.I):
         return ParsedCommand(intent='inventory_add',**parsed.model_dump(exclude={'intent'}))
     scope_text = re.sub(r'\bnon[-\s]?gst\b|\bwithout\s+gst\b|\bgst\s+(?:ke\s+)?(?:bina|nahi)\b|बिना\s+जीएसटी','',text,flags=re.I)
+    if parsed.intent=='purchase_create':scope_text=re.sub(r'\b(gst|cgst|sgst|igst|tax|discount)\b|जीएसटी|टैक्स|छूट','',scope_text,flags=re.I)
     if re.search(r'\b(gst|cgst|sgst|igst|tax|discount|return\w*|batch\w*|serial\w*|transfer|correction)\b|जीएसटी|टैक्स|छूट|वापस|ट्रांसफर',scope_text,re.I):
         parsed.unsupported_reason = 'Tax/GST, discounts, returns ya advanced stock requests is pilot mein supported nahi hain.'
-    if re.search(r'\d.*?\b(?:aur|and)\b.*?\d|\d.*?और.*?\d',text,re.I):
+    from app.services.purchase_native_context import enabled as purchase_agent_enabled
+    if not (purchase_agent_enabled() and parsed.purchase_lines) and re.search(r'\d.*?\b(?:aur|and)\b.*?\d|\d.*?और.*?\d',text,re.I):
         parsed.unsupported_reason = 'Combined instructions supported nahi hain. Ek item ki quantity aur rate ke saath ek entry boliye.'
     return parsed
 
@@ -203,6 +230,17 @@ async def interpret(request: CommandRequest, customer_names: list[str] | None = 
     if re.fullmatch(r'\s*(?:tally\s+)?(?:reports?|रिपोर्ट)(?:\s+(?:dikhao|show|dikha|दिखाओ))?\s*',request.text,re.I):
         return ParsedCommand(intent='mcp_read')
     settings = get_settings()
+    from app.services.purchase_native_context import enabled as purchase_agent_enabled
+    if purchase_agent_enabled() and not re.search(r'\b(?:report|register|history|list|dikhao|show)\b',text,re.I) and re.search(r'\b(?:purchase|kharid\w*|khareed\w*|liye|liya)\b|खरीद',text,re.I):
+        from app.services import purchase_message,purchase_agent
+        mentions=await purchase_message.extract(text)
+        content=purchase_agent.apply_updates({'lines':[{}]},mentions)
+        first=content['lines'][0]
+        return ParsedCommand(intent='purchase_create',party_name=content.get('party_name'),
+            item_name=first.get('item_name'),quantity=first.get('quantity'),unit=first.get('unit'),rate=first.get('rate'),
+            entry_date=content.get('entry_date'),invoice_number=content.get('invoice_number'),
+            purchase_lines=content['lines'],purchase_mentions=mentions,source_message=text,
+            purchase_tax_review=bool(re.search(r'\b(?:GST|CGST|IGST|SGST|tax)\b',text,re.I)))
     prompt = (
         f"Interpret a Hindi/Hinglish/English small-business command. Today is {today().isoformat()} in India. "
         "Return only JSON matching the supplied schema. No tools or execution. "
@@ -279,6 +317,8 @@ async def interpret(request: CommandRequest, customer_names: list[str] | None = 
                 incomplete = parsed
                 continue  # Try the existing review provider when classification omitted all details.
             return parsed
+        except QuotaDeferred:
+            raise HTTPException(503,'AI capacity busy. Details retain karke thodi der baad retry karein.')
         except Exception:
             continue
     if incomplete:
@@ -370,6 +410,7 @@ async def plan_command(request: CommandRequest, principal, db: AsyncSession) -> 
         for key in ('items','parties','suppliers','units'):
             if key in tally_names:tally_names[key]=list(dict.fromkeys(tally_names[key]))[:100]
     parsed = await interpret(request, names, tally_names)
+    if parsed.intent=='purchase_create':parsed.purchase_context=request.fields.purchase_context
     if parsed.intent in ('customer_history','portfolio_history') and not request.intent:
         parsed.history_query = parsed.history_query or request.text
     return parsed

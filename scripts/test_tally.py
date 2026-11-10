@@ -9,7 +9,7 @@ from unittest.mock import patch,AsyncMock
 from xml.etree import ElementTree as ET
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import delete
+from sqlalchemy import delete,select
 from app.api.v1.routes_business import ParsedCommand,CommandFields,CommandRequest,guard_tally_scope
 from app.models.organization import Organization
 from app.models.tally import TallyConnection,TallyAction
@@ -97,7 +97,8 @@ class XmlTests(unittest.TestCase):
             result=guard_tally_scope(CommandRequest(text=text),ParsedCommand(intent='purchase_create'))
             self.assertTrue(result.unsupported_reason)
         result=guard_tally_scope(CommandRequest(text='10 bags 350 per bag',conversation_history=[{'role':'user','content':'GST ke saath purchase entry karo'}]),ParsedCommand(intent='purchase_create'))
-        self.assertTrue(result.unsupported_reason)
+        self.assertTrue(result.purchase_tax_review)
+        self.assertIsNone(result.unsupported_reason,'explicit purchase tax details now route to validated GST review')
     def test_xml_escaping_and_mismatch(self):
         p={'company':'A & B','date':'2026-10-08','guid':str(uuid.uuid4()),'voucher_type':'Sales',
            'party':'Party <test>','item':'Cement','godown':'Main Location','quantity':'10','unit':'bags',
@@ -174,6 +175,11 @@ async def integration():
         else:raise AssertionError('Concurrent write must be blocked')
         result=await task;assert result['tally_status']=='verified' and fake.balance==30
         assert (await confirm(token))==result and fake.posts==1
+        from app.models.bill_evaluation import BillEvaluationMetric
+        async with AsyncSessionLocal() as db:
+            audit=list((await db.scalars(select(BillEvaluationMetric).where(BillEvaluationMetric.organization_id==org,BillEvaluationMetric.kind=='posting_authorized'))).all())
+            assert len(audit)==1 and audit[0].data['action_id']==token
+            assert audit[0].data['authorization_type']=='human_approval'
         sale=await preview('sale_create');await confirm(sale['preview']['token']);assert fake.balance==20 and fake.posts==2
         cancelled=await preview();await confirm(cancelled['preview']['token'],False);assert fake.posts==2
         expired=await preview();token=expired['preview']['token']
@@ -204,6 +210,11 @@ async def integration():
         async with AsyncSessionLocal() as db:
             await db.execute(delete(Organization).where(Organization.id==org));await db.commit()
         await async_engine.dispose()
+
+
+class LegacyAuthorizationIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_legacy_posting_scope_audit_and_recovery(self):
+        await integration()
 
 
 if __name__=='__main__':

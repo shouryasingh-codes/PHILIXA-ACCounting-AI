@@ -12,6 +12,8 @@ COPY requirements.txt .
 RUN sed -i 's/http:/https:/g' /etc/apt/sources.list.d/debian.sources && apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
+ENV TIKTOKEN_CACHE_DIR=/opt/philixa-tokenizers
+RUN python -c "import tiktoken; tiktoken.get_encoding('o200k_harmony')"
 
 COPY app ./app
 COPY README.md .

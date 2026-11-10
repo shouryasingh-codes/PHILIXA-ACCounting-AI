@@ -43,13 +43,14 @@ async def batch_for(db,principal,batch_id,lock=False):
     return batch
 
 
-async def document_for(db,principal,document_id,lock=False):
+async def document_for(db,principal,document_id,lock=False,include_trashed=False):
     admin(principal)
     query=select(BillDocument).where(BillDocument.id==document_id,BillDocument.organization_id==principal.organization_id,BillDocument.user_id==principal.user_id).execution_options(populate_existing=True)
     if lock:query=query.with_for_update().execution_options(populate_existing=True)
     row=await db.scalar(query)
     if not row:raise HTTPException(404,'Document nahi mila.')
     await company_for(db,principal,row.company_id)
+    if row.trashed_at and not include_trashed:raise HTTPException(404,'Document Trash mein hai. Pehle Restore karein.')
     return row
 
 
@@ -58,7 +59,8 @@ def view(row):
         'extraction_status': row.extraction_status, 'extraction_error':row.extraction_error,
         'page_count':row.page_count,'error_code':row.error_code,'message':ERRORS.get(row.error_code) if row.error_code else
         {'queued':'Uploaded · file check pending','processing':'Checking file','ready':'File checked · original ready'}.get(row.status,row.status),
-        'created_at':row.created_at.isoformat(),'retry_available':row.status=='error'}
+        'created_at':row.created_at.isoformat(),'retry_available':row.status=='error',
+        'trashed_at':row.trashed_at.isoformat() if row.trashed_at else None}
 
 
 async def create_batch(db,principal,request):
@@ -69,12 +71,43 @@ async def create_batch(db,principal,request):
     return {'id':row.id,'company_id':row.company_id,'created_at':row.created_at.isoformat(),'documents':[]}
 
 
-async def read_batch(db,principal,batch_id):
+async def read_batch(db,principal,batch_id,trashed=False):
     batch=await batch_for(db,principal,batch_id)
     rows=await db.scalars(select(BillDocument).join(DocumentBatchItem,DocumentBatchItem.document_id==BillDocument.id).where(
         DocumentBatchItem.batch_id==batch.id,BillDocument.organization_id==principal.organization_id,BillDocument.user_id==principal.user_id,
-        BillDocument.company_id==batch.company_id).order_by(BillDocument.created_at,BillDocument.id).execution_options(populate_existing=True))
-    return {'id':batch.id,'company_id':batch.company_id,'created_at':batch.created_at.isoformat(),'documents':[view(r) for r in rows]}
+        BillDocument.company_id==batch.company_id,
+        BillDocument.trashed_at.is_not(None) if trashed else BillDocument.trashed_at.is_(None)).order_by(BillDocument.created_at,BillDocument.id).execution_options(populate_existing=True))
+    from app.models.purchase_draft import PurchaseDraft
+    protected=set(await db.scalars(select(PurchaseDraft.document_id).where(PurchaseDraft.organization_id==principal.organization_id,
+        PurchaseDraft.user_id==principal.user_id,PurchaseDraft.action_id.is_not(None))))
+    documents=[]
+    for row in rows:
+        protected_entry=row.id in protected
+        processing=row.status in ('queued','processing') or row.extraction_status in ('queued','processing')
+        documents.append({**view(row),'trash_available':not protected_entry and not processing,
+            'trash_reason':'Entry/preview linked: accounting history retained.' if protected_entry else 'Processing finish hone dein.' if processing else None})
+    return {'id':batch.id,'company_id':batch.company_id,'created_at':batch.created_at.isoformat(),'documents':documents}
+
+
+async def set_trash(db,principal,document_id,trashed=True):
+    from app.models.purchase_draft import PurchaseDraft
+    from app.services.purchase_draft_service import record_event
+    # Match draft mutation lock order: draft first, then its source document.
+    await document_for(db,principal,document_id,include_trashed=True)
+    drafts=list(await db.scalars(select(PurchaseDraft).where(PurchaseDraft.document_id==document_id)
+        .order_by(PurchaseDraft.id).with_for_update().execution_options(populate_existing=True)))
+    row=await document_for(db,principal,document_id,lock=True,include_trashed=True)
+    if bool(row.trashed_at)==trashed:return view(row)
+    if trashed:
+        if any(d.action_id for d in drafts):raise HTTPException(409,'Entry/preview linked hai. Is bill ki accounting history Trash nahi kar sakte; Tally entry unchanged hai.')
+        if row.status in ('queued','processing') or row.extraction_status in ('queued','processing'):
+            raise HTTPException(409,'Processing finish hone dein, phir Trash karein.')
+    row.trashed_at=now() if trashed else None;row.updated_at=now()
+    for draft in drafts:
+        draft.revision+=1;draft.updated_at=now()
+        record_event(db,draft,principal.user_id,'document_trashed' if trashed else 'document_restored')
+    await db.commit()
+    return view(row)
 
 
 async def list_batches(db,principal):
@@ -112,6 +145,7 @@ async def upload_document(db,principal,batch_id,file):
     row=await db.scalar(select(BillDocument).where(BillDocument.organization_id==principal.organization_id,
         BillDocument.user_id==principal.user_id,BillDocument.company_id==batch.company_id,BillDocument.sha256==sha))
     duplicate=row is not None
+    if row and row.trashed_at:raise HTTPException(409,'Ye file Trash mein pehle se saved hai. Trash view se Restore karein; duplicate upload nahi banega.')
     linked=await db.get(DocumentBatchItem,(batch.id,row.id)) if row else None
     if not linked:
         count=await db.scalar(select(func.count()).select_from(DocumentBatchItem).where(DocumentBatchItem.batch_id==batch.id))

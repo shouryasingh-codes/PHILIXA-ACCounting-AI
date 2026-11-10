@@ -30,6 +30,66 @@ def pdf(pages=1,password=False):
 
 
 class DocumentTests(unittest.IsolatedAsyncioTestCase):
+    async def ready_with_draft(self):
+        from app.services import purchase_draft_service as drafts
+        from app.models.purchase_draft import PurchaseDraft
+        result=await self.upload();docid=result['document']['id']
+        await jobs.validate_bill_document({},docid)
+        draft=await drafts.create_draft(self.db,self.principal,drafts.DraftCreate(company_id=self.company.id,content={'invoice_number':'TRASH-TEST'}))
+        row=await self.db.get(PurchaseDraft,draft['id']);row.document_id=docid;await self.db.commit()
+        return docid,row
+
+    async def test_trash_restore_durable_source_and_draft_visibility(self):
+        from app.services import purchase_draft_service as drafts,purchase_review_service as review
+        docid,draft=await self.ready_with_draft();draftid=draft.id
+        original=await docs.original_bytes(await docs.document_for(self.db,self.principal,docid))
+        await docs.set_trash(self.db,self.principal,docid)
+        self.assertEqual((await docs.read_batch(self.db,self.principal,self.batch['id']))['documents'],[])
+        self.assertEqual(len((await docs.read_batch(self.db,self.principal,self.batch['id'],trashed=True))['documents']),1)
+        self.assertEqual((await drafts.list_drafts(self.db,self.principal))['drafts'],[])
+        self.assertEqual((await review.queue(self.db,self.principal))['bills'],[])
+        with self.assertRaises(HTTPException):await drafts.scoped_draft(self.db,self.principal,draftid,lock=True)
+        await self.db.rollback()
+        with self.assertRaises(HTTPException):await routes.original(docid,self.principal,self.db)
+        await self.db.rollback()
+        with self.assertRaises(HTTPException) as duplicate:await self.upload(filename='renamed.png')
+        self.assertIn('Restore',duplicate.exception.detail);await self.db.rollback()
+        async with AsyncSessionLocal() as fresh:
+            await docs.set_trash(fresh,self.principal,docid,trashed=False)
+            restored=await docs.document_for(fresh,self.principal,docid)
+            self.assertEqual(await docs.original_bytes(restored),original)
+            result=await drafts.read_draft(fresh,self.principal,draftid)
+            self.assertEqual(result['revision'],2)
+            events=(await drafts.audit_draft(fresh,self.principal,draftid))['events']
+            self.assertEqual([e['kind'] for e in events],['created','document_trashed','document_restored'])
+            await docs.set_trash(fresh,self.principal,docid,trashed=False)
+            self.assertEqual((await drafts.read_draft(fresh,self.principal,draftid))['revision'],2)
+
+    async def test_trash_does_not_touch_linked_accounting_actions(self):
+        from app.models.purchase_draft import PurchaseDraft
+        docid,draft=await self.ready_with_draft()
+        action=await fixtures.DurableTests.preview(self)
+        linked=await self.db.scalar(select(PurchaseDraft).where(PurchaseDraft.action_id==action.token))
+        linked.document_id=docid;await self.db.commit()
+        for status in ('preview','queued','submitting','verification_pending','verified','needs_review'):
+            action.status=status;await self.db.commit()
+            with self.assertRaises(HTTPException) as blocked:await docs.set_trash(self.db,self.principal,docid)
+            self.assertEqual(blocked.exception.status_code,409)
+            self.assertEqual(action.status,status)
+        self.assertIsNone((await docs.document_for(self.db,self.principal,docid)).trashed_at)
+
+    async def test_trash_scope_and_processing_guards(self):
+        result=await self.upload();docid=result['document']['id']
+        with self.assertRaises(HTTPException):await docs.set_trash(self.db,self.principal,docid)
+        await self.db.rollback()
+        await jobs.validate_bill_document({},docid)
+        for change in ({'user_id':'other'},{'organization_id':'other'},{'role':'member'}):
+            other=SimpleNamespace(**{**self.principal.__dict__,**change})
+            with self.assertRaises(HTTPException):await docs.set_trash(self.db,other,docid)
+            await self.db.rollback()
+        row=await docs.document_for(self.db,self.principal,docid);row.extraction_status='queued';await self.db.commit()
+        with self.assertRaises(HTTPException):await docs.set_trash(self.db,self.principal,docid)
+
     async def asyncSetUp(self):
         await fixtures.DurableTests.asyncSetUp(self)
         self.real_enqueue=docs.enqueue
@@ -37,6 +97,7 @@ class DocumentTests(unittest.IsolatedAsyncioTestCase):
         self.batch=await docs.create_batch(self.db,self.principal,docs.BatchCreate(company_id=self.company.id))
     async def asyncTearDown(self):
         self.enqueue.stop()
+        await self.db.rollback()
         rows=list((await self.db.scalars(select(BillDocument).where(BillDocument.organization_id==self.org))).all())
         for row in rows:await asyncio.to_thread(storage.remove,row.object_key)
         await fixtures.DurableTests.asyncTearDown(self)

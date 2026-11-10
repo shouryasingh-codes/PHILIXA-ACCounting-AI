@@ -52,13 +52,17 @@ if __name__=='__main__':
     data=sys.stdin.buffer.read(MAX_BYTES+1)
     try:
         if sys.argv[1]=='inspect':sys.stdout.write(json.dumps(inspect(data)))
-        elif sys.argv[1]=='extract':
+        elif sys.argv[1] in ('extract','automation'):
             import pymupdf
             from app.services.invoice_extraction import extract_from_pdf_text_local
             result=extract_from_pdf_text_local(data)
             with pymupdf.open(stream=data,filetype='pdf') as doc:
                 result['_source_text']='\n'.join(page.get_text() for page in doc)[:60000]
                 result['_page_count']=doc.page_count
+                if sys.argv[1]=='automation':
+                    result['_digital_only']=all(len(page.get_text().strip())>=40 and sum(
+                        (box.width*box.height)/(page.rect.width*page.rect.height)
+                        for image in page.get_images() for box in page.get_image_rects(image[0]))<=.5 for page in doc)
             sys.stdout.write(json.dumps(result))
         elif sys.argv[1]=='preview':sys.stdout.buffer.write(preview(data,int(sys.argv[2])))
         else:raise RejectedDocument('unsupported_type')

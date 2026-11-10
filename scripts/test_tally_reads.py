@@ -6,7 +6,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from app.database.session import AsyncSessionLocal
 from app.models.organization import Organization
 from app.models.tally import TallyReadCompany, TallyDevice
@@ -16,6 +16,41 @@ from app.api.v1 import routes_tally_bridge as routes
 from app.core.redis import get_redis_client, close_redis_pool
 
 class Reads(unittest.IsolatedAsyncioTestCase):
+    async def test_paired_all_stock_uses_fresh_snapshot_not_legacy_filter(self):
+        company=self.rows[0]
+        device=TallyDevice(id=uuid.uuid4().hex,organization_id=self.org,credential_hash='a'*64)
+        self.db.add(device);await self.db.flush();company.device_id=device.id;await self.db.commit()
+        stamp=stock.datetime.now(stock.ZoneInfo('Asia/Kolkata')).date().isoformat()
+        capture=AsyncMock(return_value={'identity':company.identity,'as_of':stamp,'items':[
+            {'item':'Cement','unit':'bags','quantity':'30','raw_quantity':'30 bags','limitation':None}]})
+        with patch('app.services.tally_sync.capture_snapshot',capture), patch.object(bridge,'request_job',side_effect=AssertionError('No legacy unfiltered job')):
+            result=await stock.read_stock(self.db,self.owner,commands.ParsedCommand(intent='stock_read',company_id=company.id,item_name='*'))
+        capture.assert_awaited_once()
+        self.assertEqual(result['stock_results'][0]['data_source'],'live')
+        self.assertIn('Cement — 30 bags',result['response'])
+
+    async def test_complete_stock_rechecks_scope_before_capture(self):
+        company=self.rows[0]
+        await self.db.execute(update(TallyReadCompany).where(TallyReadCompany.id==company.id).values(enabled=False))
+        await self.db.commit()
+        with patch('app.services.tally_sync.capture_snapshot',AsyncMock()) as capture:
+            with self.assertRaises(stock.TallyError):
+                await stock.read_complete_stock(company)
+            capture.assert_not_called()
+
+    async def test_all_stock_lists_items_without_ambiguous_selection(self):
+        async def data(operation,**kw):
+            self.assertIsNone(kw['item_query'])
+            result=await self.data(operation,**kw)
+            result['items'].append({**result['items'][0],'item':'Steel','quantity':'12'})
+            return result
+        with patch.object(stock,'local_operation',side_effect=data):
+            result=await stock.read_stock(self.db,self.owner,commands.ParsedCommand(intent='stock_read',company_id=self.rows[0].id,item_name='*'))
+        self.assertIn('Cement — 0 bags',result['response'])
+        self.assertIn('Steel — 12 bags',result['response'])
+        self.assertFalse(result['coverage']['partial'])
+        self.assertEqual(result['tally_choices'],[])
+
     async def asyncSetUp(self):
         self.org=uuid.uuid4().hex; self.db=AsyncSessionLocal()
         self.owner=SimpleNamespace(organization_id=self.org,user_id='owner',role='owner')

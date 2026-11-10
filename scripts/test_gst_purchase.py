@@ -146,6 +146,8 @@ class NativeShape(unittest.IsolatedAsyncioTestCase):
 class Durable(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         await fixtures.DurableTests.asyncSetUp(self)
+        guard=patch('app.services.purchase_memory_service.live_check',AsyncMock())
+        guard.start();self.addCleanup(guard.stop)
         snapshot=await self.db.get(TallySnapshot,self.company.id);snapshot.catalog=serialize_catalog(catalog());await self.db.commit()
     asyncTearDown=fixtures.DurableTests.asyncTearDown
     async def test_scoped_profile_revision_preview_locked_and_tax_check(self):
@@ -166,6 +168,11 @@ class Durable(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TallyError):await service.ensure_approved_profile(self.db,action)
 
 class BridgeV8(Durable):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        # Existing pre-Day-7 GST actions remain on v8; new guarded actions use v9.
+        guard=patch('app.services.purchase_memory_service.prepare_preview',AsyncMock())
+        guard.start();self.addCleanup(guard.stop)
     async def test_legacy_helper_cannot_consume_gst_job(self):
         from redis.asyncio import Redis
         from app.core.config import get_settings

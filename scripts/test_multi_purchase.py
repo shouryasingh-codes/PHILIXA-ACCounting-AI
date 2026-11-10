@@ -85,12 +85,17 @@ class MultiProtocol(unittest.IsolatedAsyncioTestCase):
 
 
 class MultiDrafts(unittest.IsolatedAsyncioTestCase):
-    asyncSetUp=fixtures.DurableTests.asyncSetUp
+    async def asyncSetUp(self):
+        await fixtures.DurableTests.asyncSetUp(self)
+        from scripts.purchase_fixture_support import master_ids
+        await master_ids(self.db,self.company.id)
+        guard=patch('app.services.purchase_memory_service.live_check',AsyncMock())
+        guard.start();self.addCleanup(guard.stop)
     asyncTearDown=fixtures.DurableTests.asyncTearDown
 
     async def stage(self):
         row=await drafts.create_draft(self.db,self.principal,drafts.DraftCreate(company_id=self.company.id,
-            content={'party_name':'Supplier','entry_date':'2026-10-01','lines':[
+            content={'invoice_number':'MP-TEST','party_name':'Supplier','entry_date':'2026-10-01','lines':[
                 {'item_name':'Cement','quantity':'8','unit':'bags','rate':'350'},
                 {'item_name':'Cement','quantity':'2','unit':'bags','rate':'400'}]}))
         self.assertEqual(row['total'],'3600.00')
@@ -122,7 +127,7 @@ class MultiDrafts(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValidationError):drafts.DraftContent(lines=[{}]*101)
         with self.assertRaises(ValidationError):drafts.DraftContent(lines=[{}],item_name='Cement')
         row=await drafts.create_draft(self.db,self.principal,drafts.DraftCreate(company_id=self.company.id,
-            content={'party_name':'Supplier','entry_date':'2026-10-01','lines':[{}]}))
+            content={'invoice_number':'MP-TEST','party_name':'Supplier','entry_date':'2026-10-01','lines':[{}]}))
         with self.assertRaises(HTTPException) as exc:
             await drafts.preview_draft(self.db,self.principal,row['id'],drafts.DraftPreview(revision=0))
         self.assertEqual(exc.exception.status_code,422)
@@ -138,7 +143,7 @@ class MultiDrafts(unittest.IsolatedAsyncioTestCase):
     async def test_concurrent_edit_during_snapshot_refresh_cannot_preview_stale_lines(self):
         from app.database.session import AsyncSessionLocal
         row=await drafts.create_draft(self.db,self.principal,drafts.DraftCreate(company_id=self.company.id,
-            content={'party_name':'Supplier','entry_date':'2026-10-01','lines':[
+            content={'invoice_number':'MP-TEST','party_name':'Supplier','entry_date':'2026-10-01','lines':[
                 {'item_name':'Cement','quantity':'1','unit':'bags','rate':'350'}]}))
         async def refresh(db,company):
             await db.commit()

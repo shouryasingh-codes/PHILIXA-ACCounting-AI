@@ -55,3 +55,13 @@ __all__ = [
     "WorkspacePlan",
     "WorkspaceType",
 ]
+
+from app.models.purchase_memory import PurchaseAlias, PurchaseInvoiceClaim
+from app.models.purchase_automation import PurchaseAutomationPolicy, PurchaseAutomationDecision, PurchaseAutomationReservation
+from app.models.bill_evaluation import BillEvaluationMetric
+from app.models.invoice_ai_budget import InvoiceAIBudgetDebit
+from app.models.purchase_agent import PurchaseHistoryCache, PurchaseChatReceipt, PurchaseGraphCheckpoint, PurchaseGraphWrite
+from app.models.agent_task import AgentTask, AgentRun, AgentExecution
+from app.models.groq_quota import GroqQuotaRequest, GroqQuotaCooldown
+from app.models.business_route import BusinessRoute
+from app.models.chat_attachment import ChatBillMessage, ChatBillAttachment

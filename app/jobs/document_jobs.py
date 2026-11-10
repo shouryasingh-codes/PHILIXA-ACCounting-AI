@@ -15,7 +15,7 @@ from app.services import bill_document_service as docs
 async def validate_bill_document(ctx,document_id):
     async with AsyncSessionLocal() as db:
         row=await db.scalar(select(BillDocument).where(BillDocument.id==document_id).with_for_update())
-        if not row or row.status not in ('queued','processing'):return
+        if not row or row.trashed_at or row.status not in ('queued','processing'):return
         if row.status=='processing' and row.lease_until and row.lease_until>docs.now():return
         if row.next_attempt_at and row.next_attempt_at>docs.now():return
         if row.attempts>=3:
@@ -43,16 +43,23 @@ async def validate_bill_document(ctx,document_id):
             row.next_attempt_at=docs.now()+timedelta(seconds=30*row.attempts) if row.status=='queued' else None
         await db.commit()
 
+    from app.services.chat_attachments import wake
+    await wake(ctx,document_id)
+
 
 async def recover_bill_documents(ctx):
     async with AsyncSessionLocal() as db:
         rows=await db.scalars(select(BillDocument).where(or_(
             and_(BillDocument.status=='queued',or_(BillDocument.next_attempt_at.is_(None),BillDocument.next_attempt_at<=docs.now())),
-            and_(BillDocument.status=='processing',BillDocument.lease_until<=docs.now())))
+            and_(BillDocument.status=='processing',BillDocument.lease_until<=docs.now())),BillDocument.trashed_at.is_(None))
             .order_by(BillDocument.created_at).limit(100))
         for row in rows:await docs.enqueue(row,ctx['redis'])
     from app.services.invoice_extraction_jobs import recover
     await recover(ctx)
+    from app.services.purchase_native_context import recover as recover_context
+    await recover_context(ctx)
+    from app.jobs.task_agent_jobs import recover_agent_tasks
+    await recover_agent_tasks(ctx)
 
 
 async def startup(ctx):await recover_bill_documents(ctx)
@@ -60,14 +67,16 @@ async def shutdown(ctx):await async_engine.dispose()
 
 
 from app.services.invoice_extraction_jobs import extract_bill_document
+from app.services.purchase_native_context import refresh_purchase_history
+from app.jobs.task_agent_jobs import execute_agent_task
 
 
 class DocumentWorkerSettings:
-    functions=[validate_bill_document, extract_bill_document]
+    functions=[validate_bill_document, extract_bill_document,refresh_purchase_history,execute_agent_task]
     cron_jobs=[cron(recover_bill_documents,second=0)]
     queue_name=docs.QUEUE
     redis_settings=RedisSettings.from_dsn(get_settings().redis_url)
-    max_jobs=2
+    max_jobs=1
     max_tries=1
     keep_result=0
     job_timeout=300

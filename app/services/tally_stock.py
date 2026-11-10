@@ -1,12 +1,39 @@
 """Live multi-company stock. No embeddings, generated SQL or stock cache."""
 import asyncio
 import logging
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from app.models.tally import TallyReadCompany, TallyDevice
 from app.services.tally_connector import TallyError, local_operation, decimal
 logger = logging.getLogger(__name__)
+
+def read_timeout():
+    try:return max(3,min(25,float(os.getenv('PHILIXA_STOCK_READ_TIMEOUT_SECONDS','8'))))
+    except ValueError:return 8
+
+
+async def read_complete_stock(company):
+    """Fresh generation-bound read using the connector's paginated protocol.
+
+    The legacy stock operation requires an item filter in deployed helpers.
+    Full inventory belongs on the existing complete-snapshot protocol instead;
+    capture_snapshot verifies every page hash, native identity and coverage.
+    Each concurrent company read owns its database session. Nothing is published
+    to the saved cache, so a failed capture cannot masquerade as a live answer.
+    """
+    from app.database.session import AsyncSessionLocal
+    from app.services.tally_sync import capture_snapshot
+    expected=(company.organization_id, company.identity, company.name, company.device_id)
+    async with AsyncSessionLocal() as reader:
+        current=await reader.get(TallyReadCompany, company.id)
+        if not current or not current.enabled or (
+            current.organization_id,current.identity,current.name,current.device_id
+        )!=expected:
+            raise TallyError('Company/helper changed during stock read.')
+        data=await capture_snapshot(reader,current)
+        return dict(company=current.name,identity=data['identity'],as_of=data['as_of'],items=data['items'])
 
 
 def validate_stock_data(data):
@@ -69,6 +96,7 @@ async def read_stock(db, principal, parsed, scope=None):
             {'name': c.name, 'command': selection(parsed, company_id=c.id)} for c in scope]}
     if not parsed.item_name:
         return {'response': 'Kis item ka stock chahiye? Item ka naam bataiye.'}
+    all_stock=parsed.item_name=='*'
     stamp = datetime.now(ZoneInfo('Asia/Kolkata'))
     as_of = stamp.date().isoformat()
     semaphore = asyncio.Semaphore(3)
@@ -76,25 +104,30 @@ async def read_stock(db, principal, parsed, scope=None):
         async with semaphore:
             try:
                 from app.services.tally_bridge import request_job
-                operation = request_job(devices[company.device_id], 'stock', company=company.name, identity=company.identity, as_of=as_of, item_query=parsed.item_name) if company.device_id else local_operation('stock', company=company.name, identity=company.identity, as_of=as_of, item_query=parsed.item_name)
-                data = await asyncio.wait_for(operation, timeout=25)
+                query_arg=None if all_stock else parsed.item_name
+                if company.device_id and all_stock:
+                    operation = read_complete_stock(company)
+                else:
+                    operation = request_job(devices[company.device_id], 'stock', company=company.name, identity=company.identity, as_of=as_of, item_query=query_arg) if company.device_id else local_operation('stock', company=company.name, identity=company.identity, as_of=as_of, item_query=query_arg)
+                data = await asyncio.wait_for(operation, timeout=read_timeout())
                 validate_stock_data(data)
                 if data.get('identity') != company.identity or data.get('company') != company.name or data.get('as_of') != as_of:
                     raise TallyError('Helper response company/date mismatch.')
                 query = parsed.item_name.strip().casefold()
                 exact = [i for i in data['items'] if i['item'].casefold() == query]
-                matches = exact or [i for i in data['items'] if query in i['item'].casefold()]
-                status = 'ok' if len(matches) == 1 else 'ambiguous' if matches else 'item_not_found'
+                matches = data['items'] if all_stock else exact or [i for i in data['items'] if query in i['item'].casefold()]
+                status = 'all' if all_stock else 'ok' if len(matches) == 1 else 'ambiguous' if matches else 'item_not_found'
                 return {'company_id': company.id, 'company': company.name, 'status': status,
                         'items': matches, 'as_of': as_of, 'data_source':'live', 'read_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(timespec='seconds')}
             except (TallyError, TimeoutError, KeyError, TypeError, ValueError) as exc:
                 reason = next((reason for reason in ('Helper offline', 'Tally closed', 'Setup needed', 'Company unavailable', 'timeout') if reason.casefold() in str(exc).casefold()), 'Read failed')
+                if isinstance(exc, TimeoutError): reason = 'timeout'
                 snapshot=snapshots.get(company.id)
                 if snapshot:
                     query=parsed.item_name.strip().casefold()
                     exact=[i for i in snapshot.items if i['item'].casefold()==query]
-                    matches=exact or [i for i in snapshot.items if query in i['item'].casefold()]
-                    return {'company_id':company.id,'company':company.name,'status':'ok' if len(matches)==1 else 'ambiguous' if matches else 'item_not_found',
+                    matches=snapshot.items if all_stock else exact or [i for i in snapshot.items if query in i['item'].casefold()]
+                    return {'company_id':company.id,'company':company.name,'status':'all' if all_stock else 'ok' if len(matches)==1 else 'ambiguous' if matches else 'item_not_found',
                             'items':matches,'data_source':'saved','last_synced_at':snapshot.collected_at.isoformat(),'as_of':snapshot.as_of,'reason':reason}
                 return {'company_id': company.id, 'company': company.name, 'status': 'unavailable', 'reason': reason+'; saved stock available nahi', 'items': []}
     # Sequential DB access is resolved before reads; transport does no DB lookup during concurrency.
@@ -136,7 +169,12 @@ async def read_stock(db, principal, parsed, scope=None):
     lines = ['Partial result — kuch companies verify nahi hui.' if partial else 'Tally stock (last synced data included):' if has_saved else 'Tally live stock:']
     choices = []
     for r in results:
-        if r['status'] == 'ok':
+        if r['status']=='all':
+            lines.append(r['company']+':')
+            for i in r['items']:lines.append(f"{i['item']} — {i['quantity'] if i['quantity'] is not None else i['raw_quantity']} {i['unit'] if i['quantity'] is not None else ''}".strip())
+            if not r['items']:lines.append('Stock items nahi mile.')
+            if r.get('data_source')=='saved':lines.append(f"Last synced: {r['last_synced_at']} · {r['reason']}")
+        elif r['status'] == 'ok':
             i = r['items'][0]
             lines.append(f"{r['company']}: {i['item']} — {i['quantity'] if i['quantity'] is not None else i['raw_quantity']} {i['unit'] if i['quantity'] is not None else ''}".strip())
             if i.get('limitation'): lines.append(i['limitation'])

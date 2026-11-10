@@ -105,6 +105,17 @@ class CountDurable(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result['count_capability']['available'])
         self.assertNotIn('tally_form',result)
         self.assertNotIn('tally_action',result)
+    async def test_review_count_only_blocks_projection_when_uncertain(self):
+        a=await self.draft()
+        a.status='needs_review';a.result={'uncertain':False}
+        await self.db.commit()
+        result=await sync.stock_projection(self.db,self.company,'Cement','25','bags')
+        self.assertEqual(result['sync_status'],'synced')
+        self.assertEqual(result['expected_quantity'],'25')
+        a.result={'uncertain':True};await self.db.commit()
+        result=await sync.stock_projection(self.db,self.company,'Cement','25','bags')
+        self.assertEqual(result['sync_status'],'verification_pending')
+        self.assertIsNone(result['expected_quantity'])
     async def test_existing_draft_retained_without_retry_or_post(self):
         a=await self.draft()
         with patch.object(count,'COUNT_CODEC_CERTIFIED',False),patch.object(sync,'operation',AsyncMock(side_effect=AssertionError('No disabled dispatch'))):

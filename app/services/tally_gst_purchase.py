@@ -345,6 +345,11 @@ async def execute(operation,connector,company,identity,p,config,journal_path):
     if found:
         if len(found)!=1 or not verify(found[0],p) or not value(found[0],'VOUCHERNUMBER'):return {'status':'needs_review','reason':'Tax-ledger/invoice/line verification mismatch.'}
         return {'status':'verified','voucher_number':value(found[0],'VOUCHERNUMBER'),'tax_ledgers':p['tax_ledgers']}
+    guard=(config or {}).get('invoice_guard')
+    if guard and operation!='purchase_gst_reconcile':
+        from app.services.purchase_identity import check_native
+        checked=await check_native(connector,company,guard)
+        if checked['status']!='clear':return {'status':'needs_review','reason':checked['reason'],'uncertain':False}
     if operation=='purchase_gst_validate':return {'status':'ready'}
     if operation=='purchase_gst_reconcile':return {'status':'verification_pending'}
     if operation!='purchase_gst_post':raise TallyError('Unsupported GST operation.')
@@ -354,7 +359,8 @@ async def execute(operation,connector,company,identity,p,config,journal_path):
     with journal(journal_path) as db:
         inserted=db.execute('INSERT OR IGNORE INTO writes VALUES (?,?)',(identity+':'+p['guid'],'submitting')).rowcount
     if not inserted:return {'status':'verification_pending'}
-    try:await connector.post(gst_xml(p))
+    from app.services.purchase_identity import reference_xml
+    try:await connector.post(reference_xml(gst_xml(p),guard))
     except TallyRejected as exc:return {'status':'failed','reason':str(exc)[:300]}
     except TallyError:return {'status':'verification_pending'}
     return await execute('purchase_gst_reconcile',connector,company,identity,p,config,journal_path)

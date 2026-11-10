@@ -45,6 +45,13 @@ configure_logging()
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not settings.skip_startup_checks:
         await init_db()
+    from app.services.business_router import frontdoor_enabled as routing_enabled
+    if routing_enabled():
+        from app.services.intent_router_model import warm
+        try:await warm()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning('Routing initialization unavailable; semantic requests fail closed.')
     async with core_lifespan(app):
         yield
 

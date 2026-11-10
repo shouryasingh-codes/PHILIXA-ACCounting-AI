@@ -1,0 +1,24 @@
+{
+  "source_url": "https://www.sctce.ac.in/uploads/c2/4.3.2%20Computers%20Purchased%20Bill.pdf",
+  "source_page": 1,
+  "source_sha256": "aed4846d75d9a0a9ac7d215c14a1ab78b938e59680569ecf36db42394900c294",
+  "output_sha256": "783775d6b9af4c4ff03a0760458c4cee43d35320d183e7452e61eb1466ac3729",
+  "changes": [
+    "Buyer and consignee changed to Philixa Test / Haryana 06 / existing test tax-unit GSTIN 06ABCPE1234F1ZF",
+    "Date 11-Jan-2018 changed to 02-Nov-2026 for test FY / EDU date",
+    "Visible test-only label added"
+  ],
+  "unchanged": "Original supplier, items, quantities, rates, financial totals, interstate IGST18%, round-off, historical PO references and stamps. Original stamps are not approval of modified copy.",
+  "expected_amounts": {
+    "taxable": "1597109.49",
+    "IGST": "287479.71",
+    "round_off": "-0.20",
+    "total": "1884589.00"
+  },
+  "pending": [
+    "Fresh native registration/date check",
+    "Actual SS Information Systems Pvt Ltd supplier and actual goods / Nos / tax masters must exist",
+    "Monitor quantity50 is a bundled row without separate amount/rate: require supported bundle handling or review; never invent rate",
+    "Philixa extraction and native posting not tested; do not claim successful E2E from this file"
+  ]
+}

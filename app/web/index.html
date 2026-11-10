@@ -1173,23 +1173,37 @@
         <form id="businessComposer" class="business-composer">
           <label for="businessInput" class="business-sr-only">Message your business assistant</label>
           <textarea id="businessInput" rows="1" maxlength="4000" placeholder="Poochho ya koi kaam bolo…"></textarea>
-          <div class="business-composer-bottom"><span>Hindi · Hinglish · English</span><div><button id="businessMic" class="business-mic" type="button" aria-label="AI se bolkar baat karein" aria-pressed="false" title="AI se bolkar baat karein"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg></button><button id="businessSend" class="business-send" type="submit" aria-label="Send message" disabled><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 12 6-6 6 6M12 6v13"/></svg></button></div></div>
+          <div class="business-composer-bottom"><div class="business-composer-attachments"><button id="businessAttachBill" class="business-attach" type="button" aria-label="Attach bill PDF or photo" title="Bill PDF/photo upload karein" aria-haspopup="dialog" aria-controls="businessDocuments"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m21 11-8.5 8.5a6 6 0 0 1-8.5-8.5L13 2.5a4 4 0 0 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8-8"/></svg><span>Bill upload</span></button><span class="business-composer-language">Hindi · Hinglish · English</span></div><div><button id="businessMic" class="business-mic" type="button" aria-label="AI se bolkar baat karein" aria-pressed="false" title="AI se bolkar baat karein"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg></button><button id="businessSend" class="business-send" type="submit" aria-label="Send message" disabled><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 12 6-6 6 6M12 6v13"/></svg></button></div></div>
         </form>
         <p class="business-footnote">Customers aur follow-ups yahin saved hain. Stock/hisab ke liye software connection chahiye.</p>
       </div>
     </main>
   </div>
   <dialog id="businessDocuments" class="business-dialog bill-drafts-dialog">
-    <div class="business-dialog-head"><h2>Private bill documents</h2><button id="businessCloseDocuments" type="button" aria-label="Close documents">×</button></div>
-    <div class="document-controls"><label>Company<select id="documentCompany"></select></label><label>Saved batches<select id="documentBatch"></select></label><button id="documentNewBatch" type="button">New batch</button></div>
-    <label>Select PDF/JPG/PNG<input id="documentFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" /></label><button id="documentUpload" type="button">Upload files</button>
+    <div class="business-dialog-head"><h2 id="documentHeading">Manage bills</h2><button id="businessCloseDocuments" type="button" aria-label="Close documents">×</button></div>
+    <div class="document-controls"><label>Company<select id="documentCompany"></select></label><label class="document-manage-only">Saved batches<select id="documentBatch"></select></label><button class="document-manage-only" id="documentNewBatch" type="button">New batch</button><label class="document-manage-only">Show<select id="documentTrashView"><option value="active">Active bills</option><option value="trash">Trash</option></select></label></div>
+    <div class="document-upload-area"><label class="document-file-picker"><span>Bill ki PDF ya photo chunein</span><small>PDF, JPG ya PNG · 10 MB per file</small><input id="documentFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" /></label><div id="documentSelectedFiles" aria-label="Selected bills"></div><button id="documentUpload" type="button">Upload files</button></div><p class="document-quick-only document-upload-note">Details check hongi. Tally entry review ke baad hi hogi.</p><button id="documentManageBills" class="document-quick-only" type="button">Purane bills dekhein</button>
     <p id="documentStatus" role="status"></p><div class="bill-drafts-layout"><div id="documentList" aria-label="Uploaded files"></div><div>
       <div class="document-controls"><button id="documentPrevious" type="button" disabled>Previous page</button><button id="documentNext" type="button" disabled>Next page</button><button id="documentDownload" type="button" disabled>Download original</button></div>
       <p id="documentPage"></p><div id="documentViewer" aria-label="Original document viewer"></div></div></div>
   </dialog>
   <dialog id="businessDrafts" class="business-dialog bill-drafts-dialog">
     <div class="business-dialog-head"><h2>Saved bill drafts</h2><button id="businessCloseDrafts" type="button" aria-label="Close bill drafts">×</button></div>
-    <div class="bill-drafts-actions"><button id="billDraftNew" type="button">New draft</button><button id="billDraftReload" type="button">Refresh list</button></div>
+    <div class="bill-drafts-actions"><button id="billDraftNew" type="button">New draft</button><button id="billDraftReload" type="button">Refresh list</button><button id="billDraftChat" type="button">Continue in chat</button></div>
+    <details id="billReceiptLink" hidden data-chat-optional="true"><summary>Bill ko pehle mile maal se link karein</summary><p>Sirf poori, verified receipt ki matching quantities supported hain.</p><label for="billReceiptChoice">Saved Receipt Note</label><select id="billReceiptChoice"></select><button id="billReceiptAttach" type="button">Link receipt</button><p id="billReceiptLinkStatus" role="status"></p></details>
+    <div class="bill-review-toolbar" aria-label="Accountant review queue">
+      <label>View <select id="billQueueView"><option value="all">All bills</option><option value="processing">Processing</option><option value="needs_attention">Needs attention</option><option value="ready">Ready</option><option value="posting">Posting</option><option value="verified">Verified</option></select></label>
+      <p id="billQueueCounts" role="status"></p>
+      <button id="billQueueSelectReady" type="button">Select ready on this page</button>
+      <button id="billQueueApprove" type="button" disabled>Approve selected (0)</button>
+      <button type="button" id="billEvaluationMetrics">Review metrics</button><button id="billQueueNextIssue" type="button">Next issue (Alt+N)</button>
+      <button id="billQueueValidate" type="button">Save &amp; validate</button>
+      <button id="billRememberSupplier" type="button">Remember supplier correction</button>
+      <button id="billCompanyMemory" type="button">Company memory</button>
+      <button id="billQueuePrevious" type="button">Previous page</button><button id="billQueueNext" type="button">Next page</button>
+      <p>Alt+↑ / Alt+↓: previous / next bill. Approval queues a Tally entry; verification happens separately.</p>
+      <div id="billQueueResults" role="status" aria-live="polite"></div>
+    </div>
     <div class="bill-drafts-layout" id="billDraftsLayout"><nav id="billDraftList" aria-label="Saved bill drafts"></nav>
     <div id="billDraftDocPanel" class="draft-document-panel" aria-label="Source Document Viewer" hidden>
       <div class="document-controls"><button id="billDraftDocPrev" type="button" disabled>Previous page</button><button id="billDraftDocNext" type="button" disabled>Next page</button><button id="billDraftDocDownload" type="button">Download original</button></div>
@@ -1197,7 +1211,28 @@
       <div id="billDraftDocViewer" class="draft-doc-viewer" aria-label="Original document viewer"></div>
     </div>
     <div id="billDraftFormWrap">
+      <section id="billChatSteps" class="bill-chat-steps" hidden aria-label="Simple purchase review">
+        <h3 id="billChatStepTitle">Purchase details</h3><p id="billChatStepSummary"></p>
+        <p id="billChatStepHint" role="status"></p>
+        <div class="document-controls"><button id="billChatPrevious" type="button">Back</button><button id="billChatNext" type="button">Next: invoice &amp; GST</button><button id="billChatFull" type="button">Full view</button></div>
+      </section>
       <div id="billDraftExtractionReview" class="extraction-review-card" hidden></div>
+      <details id="billAutomationPanel" class="extraction-review-card">
+        <summary>Automation · company policy &amp; decisions</summary>
+        <p>Digital text PDFs only. Shadow mode requires human approval. Missing limits disable automation. Daily limits use India time; reservations include failed/pending entries.</p>
+        <button type="button" id="billAutomationLoad">Load company policy</button>
+        <button type="button" id="billAutomationPause">Pause automation now</button>
+        <label>Mode<select id="billAutomationMode"><option value="paused">Paused</option><option value="shadow">Shadow · human approval</option><option value="auto">Auto · post eligible bills</option></select></label>
+        <label>Approved suppliers · exact Tally names, one per line<textarea id="billAutomationSuppliers" rows="2"></textarea></label>
+        <label>Approved items · exact Tally names, one per line<textarea id="billAutomationItems" rows="2"></textarea></label>
+        <label>Per invoice limit ₹<input id="billAutomationInvoice" type="number" min="0.01" step="0.01" /></label>
+        <label>Daily amount limit ₹<input id="billAutomationAmount" type="number" min="0.01" step="0.01" /></label>
+        <label>Daily invoice count limit<input id="billAutomationCount" type="number" min="1" step="1" /></label>
+        <button type="button" id="billAutomationSave" disabled>Save company policy</button>
+        <button type="button" id="billAutomationEvaluate">Evaluate saved bill</button>
+        <p id="billAutomationStatus" role="status">Load the selected company's policy before editing.</p>
+        <div id="billAutomationDecisions" aria-live="polite"></div>
+      </details>
       <form id="billDraftForm">
         <label>Company<select id="billDraftCompany" required></select></label>
         <label>Invoice number<input name="invoice_number" id="billDraftInvoiceNo" maxlength="100" placeholder="e.g. INV-2026-001" /></label>
@@ -1237,7 +1272,8 @@
 <button id="tallyVerifySetup" class="business-back" type="button" hidden>Check live connection</button>
 <button id="tallyDiscover" class="business-back" type="button" hidden>Choose companies</button>
 <form id="tallyCompanyAccess" class="business-tool-form" hidden><p>Jin companies ka stock dekhna hai, unhe select karein. Ye sirf ek baar karna hai.</p><div id="tallyCompanyList"></div><button class="business-back">Save &amp; continue</button></form></section>
-<details class="tally-advanced"><summary>Advanced settings</summary><p>Test-company entry settings</p><button id="tallyChangeComputer" class="tally-link" type="button" hidden>Change connected PC</button><button id="tallyRevoke" class="tally-link" type="button" hidden>Disconnect PC</button><label id="tallyLocalLabel" hidden><input id="tallyLocal" type="checkbox"> Local development connection</label><p id="tallyConnectionStatus" role="status">Configuration load ho rahi hai…</p><button id="tallyProbe" class="business-back" type="button">Connection check</button><form id="tallyConnectionForm" class="business-tool-form" hidden><label>Test company<select name="company" required></select></label><label>Godown<select name="godown" required></select></label><label>Purchase ledger<select name="purchase_ledger" required></select></label><label>Sales ledger<select name="sales_ledger" required></select></label><label class="tally-checkbox"><input type="checkbox" name="test_company" required> Ye separate practice/test company hai; real accounts nahi</label><button type="submit" class="business-back">Save connection</button></form><p class="business-dialog-note">GST bill calculations and review available. GST posting locked until real Tally acceptance. Returns, batches and multiple godowns remain unsupported.</p></details><button id="businessBackToChat" class="tally-link" type="button">Back to chat</button></dialog>
+<button id="tallyPurchaseSetup" class="business-back" type="button" hidden>Purchase entry setup</button>
+<details id="tallyAdvanced" class="tally-advanced"><summary>Advanced settings</summary><p>Test-company entry settings</p><button id="tallyChangeComputer" class="tally-link" type="button" hidden>Change connected PC</button><button id="tallyRevoke" class="tally-link" type="button" hidden>Disconnect PC</button><label id="tallyLocalLabel" hidden><input id="tallyLocal" type="checkbox"> Local development connection</label><p id="tallyConnectionStatus" role="status">Configuration load ho rahi hai…</p><button id="tallyProbe" class="business-back" type="button">Connection check</button><form id="tallyConnectionForm" class="business-tool-form" hidden><label>Test company<select name="company" required></select></label><label>Godown<select name="godown" required></select></label><label>Purchase ledger<select name="purchase_ledger" required></select></label><label>Sales ledger<select name="sales_ledger" required></select></label><label class="tally-checkbox"><input type="checkbox" name="test_company" required> Ye separate practice/test company hai; real accounts nahi</label><button type="submit" class="business-back">Save connection</button></form><p class="business-dialog-note">Practice company setup only. Chat supports non-GST previews and GST purchase review drafts. Complete GST invoice details in Bills before creating a validated preview. Real-company writes remain disabled. Returns, batches and multiple godowns remain unsupported.</p></details><button id="businessBackToChat" class="tally-link" type="button">Back to chat</button></dialog>
   <!-- ===== TOP BAR ===== -->
   <!-- ===== 3-COLUMN LAYOUT ===== -->
   <div class="mfd-layout app-shell" id="appShell">
@@ -2042,7 +2078,7 @@
   </div>
 
   <!-- ===== APPLICATION SCRIPTS ===== -->
-  <link rel="stylesheet" href="/static/business-chat.css?v=12" />
+  <link rel="stylesheet" href="/static/business-chat.css?v=27" />
   <script src="/static/app.js?v=49"></script>
   <script src="/static/fast-dictation.js?v=2"></script>
   <script src="/static/philixa-voice.js?v=38"></script>
@@ -2188,6 +2224,6 @@
       document.body.appendChild(bd);
     }
   </script>
-  <script src="/static/business-voice.js?v=1"></script><script src="/static/business-tally.js?v=22"></script><script src="/static/business-chat-store.js?v=3"></script><script src="/static/business-chat.js?v=12"></script><script src="/static/business-drafts.js?v=5"></script><script src="/static/business-documents.js?v=3"></script>
+  <script src="/static/business-voice.js?v=1"></script><script src="/static/business-tally.js?v=48"></script><script src="/static/business-chat-store.js?v=3"></script><script src="/static/business-chat-attachments.js?v=2"></script><script src="/static/business-chat.js?v=30"></script><script src="/static/bill-review-meter.js?v=1"></script><script src="/static/business-drafts.js?v=19"></script><script src="/static/business-documents.js?v=12"></script>
 </body>
 </html>

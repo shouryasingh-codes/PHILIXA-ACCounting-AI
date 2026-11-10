@@ -4,6 +4,7 @@ from arq.cron import cron
 from app.core.config import get_settings
 from app.core.redis import init_redis_pool, close_redis_pool
 from app.services.tally_sync import sync_tick
+from app.services.purchase_automation_service import automation_tick
 
 async def startup(ctx): await init_redis_pool()
 async def shutdown(ctx):
@@ -13,8 +14,8 @@ async def shutdown(ctx):
 
 class WorkerSettings:
     queue_name='philixa:tally:worker'
-    functions=[sync_tick]
-    cron_jobs=[cron(sync_tick,second={0,15,30,45},unique=True)]
+    functions=[sync_tick,automation_tick]
+    cron_jobs=[cron(sync_tick,second={0,15,30,45},unique=True),cron(automation_tick,second={7,37},unique=True)]
     redis_settings=RedisSettings.from_dsn(get_settings().redis_url)
     on_startup=startup
     on_shutdown=shutdown

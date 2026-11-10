@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Literal
 from app.ai.provider import get_ai_provider
+from app.ai.groq_gateway import QuotaDeferred
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -75,6 +76,8 @@ async def business_chat(request: BusinessChatRequest, principal: CurrentPrincipa
             reply = await asyncio.to_thread(provider.generate_text, model, prompt, data)
             if reply and reply.strip():
                 return {"response": reply.strip()[:2500], "actions_enabled": False}
+        except QuotaDeferred:
+            raise HTTPException(503,'AI capacity busy. Thodi der baad retry karein.')
         except Exception:
             logger.warning("Business conversation provider unavailable: %s", provider_name)
     raise HTTPException(503, "AI jawab abhi available nahi hai. Thodi der baad try karein.")

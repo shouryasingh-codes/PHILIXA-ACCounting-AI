@@ -1,0 +1,379 @@
+{
+  "version": "accountant-v1",
+  "scope": "synthetic development QA; nine unique invoices, ten scenarios",
+  "research": "ACCOUNTANT_RESEARCH_2026_10_24.md",
+  "no_native_posting": true,
+  "no_cloud_calls": true,
+  "cases": [
+    {
+      "id": "C01",
+      "title": "Local purchase - one item",
+      "format": "pdf",
+      "layout": "combined",
+      "expected_outcome": "review",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-001",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "590.00",
+        "expected_taxes": {
+          "CGST": "45.00",
+          "SGST": "45.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "5",
+            "unit": "bags",
+            "rate": "100.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "500.00"
+          }
+        ]
+      },
+      "filename": "C01.pdf"
+    },
+    {
+      "id": "C02",
+      "title": "Mixed rates and line discount",
+      "format": "pdf",
+      "layout": "separate",
+      "expected_outcome": "review",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-002",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "1324.50",
+        "expected_taxes": {
+          "CGST": "87.25",
+          "SGST": "87.25"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "10",
+            "unit": "bags",
+            "rate": "100.00",
+            "discount_percent": "10",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "900.00"
+          },
+          {
+            "item_name": "Philixa GST TEST Goods5",
+            "quantity": "2",
+            "unit": "bags",
+            "rate": "125.00",
+            "discount_percent": "0",
+            "gst_rate": "5",
+            "hsn": "2523",
+            "taxable_amount": "250.00"
+          }
+        ]
+      },
+      "filename": "C02.pdf"
+    },
+    {
+      "id": "C03",
+      "title": "Paisa arithmetic and disclosed rounding",
+      "format": "pdf",
+      "layout": "combined",
+      "expected_outcome": "review",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-003",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.01",
+        "invoice_total": "1180.00",
+        "expected_taxes": {
+          "CGST": "90.00",
+          "SGST": "90.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "3",
+            "unit": "bags",
+            "rate": "333.33",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "999.99"
+          }
+        ]
+      },
+      "filename": "C03.pdf"
+    },
+    {
+      "id": "C04",
+      "title": "Interstate goods - IGST",
+      "format": "pdf",
+      "layout": "separate",
+      "expected_outcome": "review",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Interstate",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-004",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "07ABCPF1234G1ZA",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "708.00",
+        "expected_taxes": {
+          "IGST": "108.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "3",
+            "unit": "bags",
+            "rate": "200.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "600.00"
+          }
+        ]
+      },
+      "filename": "C04.pdf"
+    },
+    {
+      "id": "C05",
+      "title": "Clean PNG bill",
+      "format": "png",
+      "layout": "combined",
+      "expected_outcome": "review",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-005",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "660.80",
+        "expected_taxes": {
+          "CGST": "50.40",
+          "SGST": "50.40"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "7",
+            "unit": "bags",
+            "rate": "80.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "560.00"
+          }
+        ]
+      },
+      "filename": "C05.png"
+    },
+    {
+      "id": "C06",
+      "title": "Mildly tilted compressed JPEG",
+      "format": "jpg",
+      "layout": "combined",
+      "expected_outcome": "review",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-006",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "708.00",
+        "expected_taxes": {
+          "CGST": "54.00",
+          "SGST": "54.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "6",
+            "unit": "bags",
+            "rate": "100.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "600.00"
+          }
+        ]
+      },
+      "filename": "C06.jpg"
+    },
+    {
+      "id": "C07",
+      "title": "Wrong printed total - preserve and reject",
+      "format": "pdf",
+      "layout": "combined",
+      "expected_outcome": "block_total",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-007",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "999.00",
+        "expected_taxes": {
+          "CGST": "45.00",
+          "SGST": "45.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "5",
+            "unit": "bags",
+            "rate": "100.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "500.00"
+          }
+        ]
+      },
+      "filename": "C07.pdf"
+    },
+    {
+      "id": "C08",
+      "title": "Bill belongs to another buyer",
+      "format": "pdf",
+      "layout": "combined",
+      "expected_outcome": "block_company",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Other Practice Buyer Pvt Ltd",
+        "invoice_number": "QA26-008",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "236.00",
+        "expected_taxes": {
+          "CGST": "18.00",
+          "SGST": "18.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "2",
+            "unit": "bags",
+            "rate": "100.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "200.00"
+          }
+        ]
+      },
+      "filename": "C08.pdf"
+    },
+    {
+      "id": "C09",
+      "title": "Only first page supplied",
+      "format": "pdf",
+      "layout": "combined",
+      "expected_outcome": "block_pages",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-009",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "472.00",
+        "expected_taxes": {
+          "CGST": "36.00",
+          "SGST": "36.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "4",
+            "unit": "bags",
+            "rate": "100.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "400.00"
+          }
+        ]
+      },
+      "filename": "C09.pdf"
+    },
+    {
+      "id": "C10",
+      "title": "Renamed resend of C01",
+      "format": "pdf",
+      "layout": "combined",
+      "expected_outcome": "duplicate",
+      "expected": {
+        "supplier_name": "Philixa GST TEST Supplier Local",
+        "buyer_name": "Philixa Test",
+        "invoice_number": "QA26-001",
+        "invoice_date": "2026-10-02",
+        "supplier_gstin": "06ABCPF1234G1ZC",
+        "place_of_supply": "06",
+        "tax_treatment": "regular_domestic_goods",
+        "invoice_discount": "0.00",
+        "round_off": "0.00",
+        "invoice_total": "590.00",
+        "expected_taxes": {
+          "CGST": "45.00",
+          "SGST": "45.00"
+        },
+        "lines": [
+          {
+            "item_name": "Philixa GST TEST Goods18",
+            "quantity": "5",
+            "unit": "bags",
+            "rate": "100.00",
+            "discount_percent": "0",
+            "gst_rate": "18",
+            "hsn": "2523",
+            "taxable_amount": "500.00"
+          }
+        ]
+      },
+      "duplicate_of": "C01",
+      "filename": "C10-resend.pdf"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "installer": {
+    "installed": true,
+    "version": "3.7.0",
+    "startup_registered": true
+  },
+  "exit_code": 0,
+  "installed_matches_candidate": true,
+  "pairing_preserved": true,
+  "journal_integrity": "ok",
+  "changed_setting_keys": [],
+  "connection_settings_preserved": true,
+  "connector_version": "3.7.0",
+  "posting": false
+}

@@ -1,6 +1,7 @@
 """Scoped, revisioned drafts. Saving a draft never queues a Tally write."""
 import copy
 import secrets
+import re
 from datetime import date, datetime, timezone
 from typing import Literal
 from decimal import Decimal
@@ -94,6 +95,11 @@ async def company_for(db, principal, company_id):
     return company
 
 
+def active_source_filter():
+    from sqlalchemy import exists
+    return ~exists(select(BillDocument.id).where(BillDocument.id==PurchaseDraft.document_id,BillDocument.trashed_at.is_not(None)))
+
+
 async def scoped_draft(db, principal, draft_id, lock=False):
     admin(principal)
     query = select(PurchaseDraft).join(TallyReadCompany, PurchaseDraft.company_id == TallyReadCompany.id).where(
@@ -105,12 +111,17 @@ async def scoped_draft(db, principal, draft_id, lock=False):
     row = await db.scalar(query)
     if row is None:
         raise HTTPException(404, 'Bill draft nahi mila.')
+    if row.document_id:
+        doc_query=select(BillDocument).where(BillDocument.id==row.document_id).execution_options(populate_existing=True)
+        if lock:doc_query=doc_query.with_for_update()
+        doc=await db.scalar(doc_query)
+        if doc and doc.trashed_at:raise HTTPException(409,'Bill Trash mein hai. Pehle document Restore karein.')
     return row
 
 
-def record_event(db, row, actor, kind):
+def record_event(db, row, actor, kind, details=None):
     db.add(PurchaseDraftEvent(id=secrets.token_hex(16), draft_id=row.id, revision=row.revision,
-        actor_id=actor, kind=kind, snapshot=copy.deepcopy(row.content), action_id=row.action_id,
+        actor_id=actor, kind=kind, snapshot={**copy.deepcopy(row.content),**({"_event_details":details} if details else {})}, action_id=row.action_id,
         created_at=datetime.now(timezone.utc)))
 
 
@@ -164,7 +175,7 @@ async def list_drafts(db, principal):
     admin(principal)
     rows = await db.scalars(select(PurchaseDraft).join(TallyReadCompany, PurchaseDraft.company_id == TallyReadCompany.id).where(
         PurchaseDraft.organization_id == principal.organization_id, PurchaseDraft.user_id == principal.user_id,
-        TallyReadCompany.organization_id == principal.organization_id, TallyReadCompany.enabled.is_(True)
+        TallyReadCompany.organization_id == principal.organization_id, TallyReadCompany.enabled.is_(True), active_source_filter()
     ).order_by(PurchaseDraft.updated_at.desc(), PurchaseDraft.id.desc()).limit(100))
     return {'drafts':[await view(db,row) for row in rows]}
 
@@ -197,21 +208,25 @@ async def editable_action(db, row, revision):
     return action
 
 
-async def save_draft(db, principal, draft_id, request):
+async def save_draft(db, principal, draft_id, request, *, commit=True, event_details=None):
     row = await scoped_draft(db,principal,draft_id,lock=True)
     action = await editable_action(db,row,request.revision)
     content = request.content.model_dump(mode='json')
     if row.content == content:
-        await db.commit()
+        if commit:await db.commit()
         return await view(db,row)
     if action and action.status == 'preview':
         action.status = 'expired'  # Old token must never approve edited values.
+    from app.services.bill_evaluation_service import changed_fields,record
+    changed=changed_fields(row.content,content)
+    if changed:record(db,principal,'correction',{'revision':row.revision+1,'count':len(changed),'fields':changed},document_id=row.document_id,draft_id=row.id)
     row.content = content
     row.action_id = None
     row.revision += 1
     row.updated_at = datetime.now(timezone.utc)
-    record_event(db,row,principal.user_id,'edited')
-    await db.commit()
+    record_event(db,row,principal.user_id,'edited',event_details)
+    if commit:await db.commit()
+    else:await db.flush()
     return await view(db,row)
 
 
@@ -225,6 +240,7 @@ async def audit_draft(db, principal, draft_id):
 
 async def attach_preview(db, principal, action, row=None):
     """Called within the existing preview transaction. No independent commit."""
+    from_bill = row is not None
     p = action.payload
     if p.get('operation')=='purchase_gst':
         content=DraftContent.model_validate(p['source']).model_dump(mode='json')
@@ -234,21 +250,41 @@ async def attach_preview(db, principal, action, row=None):
             lines=[DraftLine(item_name=l['item'],quantity=l['quantity'],unit=l['unit'],rate=l['rate']) for l in p['items']]).model_dump(mode='json')
     else:
         content = DraftContent(party_name=p['party'],item_name=p['item'],quantity=p['quantity'],
-            unit=p['unit'],rate=p['rate'],entry_date=p['date'],godown=p['godown']).model_dump(mode='json')
+            unit=p['unit'],rate=p['rate'],entry_date=p['date'],godown=p['godown'],invoice_number=row.content.get('invoice_number') if row else None).model_dump(mode='json')
     if row is None:
         row = PurchaseDraft(id=secrets.token_hex(16),organization_id=principal.organization_id,
             user_id=principal.user_id,company_id=action.company_id,revision=0,
             content=content,created_at=action.created_at,updated_at=action.created_at)
         db.add(row)
     else:
+        if p.get('operation')!='purchase_gst':
+            # Preserve original invoice evidence (total, HSN, line amounts) when
+            # the non-GST compiler resolves a default godown or normalizes numbers.
+            content={**row.content,'godown':p.get('godown',row.content.get('godown'))}
         row.content = content
         row.revision += 1
         row.updated_at = datetime.now(timezone.utc)
     await db.flush()  # Persist action before linking the FK.
+    if from_bill:
+        from app.services.purchase_memory_service import prepare_preview
+        await prepare_preview(db,principal,row,action)
     row.action_id = action.token
     await db.flush()
     record_event(db,row,principal.user_id,'preview_created')
     return row.id
+
+
+def validate_document_company(raw, company_name):
+    # Source evidence is immutable to draft edits; never infer the buyer from the seller.
+    if (raw or {}).get('source_page_issues'):
+        raise HTTPException(422,'Invoice pages missing or ambiguous. Upload the complete original before posting.')
+    buyer=(raw or {}).get('buyer_name')
+    if not isinstance(buyer,str) or not buyer.strip():
+        raise HTTPException(422,'Invoice buyer identity is missing. Verify the original buyer/company before posting.')
+    def normalized(value):
+        return re.sub(r'[^a-z0-9]','',re.sub(r'^\s*m/s\s*','',value.lower()))
+    if normalized(buyer)!=normalized(company_name):
+        raise HTTPException(422,f'Company mismatch: bill buyer is {buyer}; selected Tally company is {company_name}. No posting created.')
 
 
 async def preview_draft(db, principal, draft_id, request):
@@ -257,9 +293,18 @@ async def preview_draft(db, principal, draft_id, request):
     row = await scoped_draft(db,principal,draft_id,lock=True)
     action = await editable_action(db,row,request.revision)
     meta=row.extraction_metadata or {}
+    if meta.get('goods_receipt'):
+        raise HTTPException(409,'Bill-pending receipt ko normal purchase ki tarah post nahi kar sakte. Tracked receipt/invoice linking required; stock duplicate ho sakta hai.')
+    if row.document_id:
+        document=await db.get(BillDocument,row.document_id)
+        target=await company_for(db,principal,row.company_id)
+        validate_document_company(document.extraction_result if document else None,target.name)
     if meta.get('multiple_invoices_detected') and not meta.get('is_split_draft'):
         raise HTTPException(422, 'Multiple invoices: split and review separate drafts before preview.')
     content = DraftContent.model_validate(row.content)
+    from app.services.goods_receipt_link_service import guard_unlinked
+    await guard_unlinked(db,row.company_id,content.party_name,{l['item_name'] for l in draft_lines(row.content)},meta.get('receipt_link_source'))
+    if not content.tax_treatment and any(Decimal(str(value or 0))>0 for value in (content.expected_taxes or {}).values()):raise HTTPException(422,'Source GST amounts exist; resolve the tax treatment before posting.')
     if content.unsupported_treatments:raise HTTPException(422,'Unsupported invoice treatments: '+', '.join(content.unsupported_treatments))
     required=('party_name','entry_date') if content.lines is not None else ('party_name','item_name','quantity','unit','rate','entry_date')
     missing = [key for key in required
@@ -269,6 +314,16 @@ async def preview_draft(db, principal, draft_id, request):
             for key in ('item_name','quantity','unit','rate') if not getattr(line,key)]
     if missing:
         raise HTTPException(422, 'Preview ke liye fill karein: '+', '.join(missing))
+    # Suggestions never authorize an identity: Bills must use exact selected masters.
+    from app.services.purchase_memory_service import catalog_for
+    from app.services.purchase_identity import exact_master
+    from app.services.tally_connector import TallyError
+    try:
+        target=await company_for(db,principal,row.company_id)
+        catalog=await catalog_for(db,target)
+        exact_master(catalog,'supplier',content.party_name)
+        for line in draft_lines(content.model_dump(mode='json')):exact_master(catalog,'item',line['item_name'])
+    except TallyError as exc:raise HTTPException(422,str(exc))
     if action and action.status == 'preview':
         action.status = 'expired'
         await db.flush()
@@ -289,4 +344,5 @@ async def preview_draft(db, principal, draft_id, request):
     if 'preview' not in result:
         await db.rollback()
         raise HTTPException(409,result['response'])
-    return result
+    from app.services.goods_receipt_link_service import bind_preview
+    return await bind_preview(db,principal,row,result)

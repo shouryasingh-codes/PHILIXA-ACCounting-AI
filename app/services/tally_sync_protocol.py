@@ -13,10 +13,13 @@ from app.services.tally_connector import (TallyConnector, TallyError, TallyRejec
     company_identity, decimal, name, value, stock_row, voucher_xml, verify_voucher, parse_xml, matches_action)
 from app.services.tally_validation import safe_catalog, validate_item, uses_cost_centres, match
 
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 11
 OPERATIONS = ('discover', 'stock', 'snapshot_start', 'snapshot_page', 'purchase_validate', 'purchase_post', 'purchase_reconcile', 'stock_count_validate', 'stock_count_post', 'stock_count_reconcile', 'mcp_read', 'mcp_compile', 'customer_ledger_validate', 'customer_ledger_post', 'customer_ledger_reconcile')
 OPERATIONS += ('purchase_gst_validate','purchase_gst_post','purchase_gst_reconcile')
+OPERATIONS += ('invoice_reference_check',)
+OPERATIONS += ('purchase_history_read',)
 OPERATIONS += ('purchase_multi_validate','purchase_multi_post','purchase_multi_reconcile')
+OPERATIONS += ('goods_receipt_validate','goods_receipt_post','goods_receipt_reconcile')
 
 def fingerprint(catalog, payload):
     """Only relevant master rules; changing stock does not invalidate purchases."""
@@ -41,7 +44,7 @@ def validate_purchase(catalog, p, config):
     expected = {'company','godown','party','item','quantity','unit','rate','total','voucher_type','ledger','date','guid','stock_before','master_fingerprint'}
     if set(p) != expected or p['voucher_type'] != 'Purchase': raise TallyError('Invalid purchase payload.')
     if any(not isinstance(v,str) or len(v)>2000 for v in p.values()): raise TallyError('Invalid purchase fields.')
-    if set(config) != {'company','godown','purchase_ledger','sales_ledger','test_company'} or config['test_company'] is not True:
+    if not isinstance(config,dict) or set(config)-{'invoice_guard'} != {'company','godown','purchase_ledger','sales_ledger','test_company'} or config['test_company'] is not True:
         raise TallyError('Test company authorization required.')
     cfg = SimpleNamespace(**config)
     safe_catalog(catalog, cfg)
@@ -94,6 +97,19 @@ async def execute_sync(operation, *, company, identity, port=None, as_of=None, p
     companies = await connector.collection('Company')
     matches = [c for c in companies if name(c)==company and company_identity(c)==identity]
     if len(matches)!=1 or sum(name(c)==company for c in companies)!=1: raise TallyError('Company unavailable or renamed.')
+    if operation=='purchase_history_read':
+        from app.services.tally_purchase_history import execute
+        return await execute(connector,company,identity,payload,generation,page,journal_path)
+    if operation.startswith('goods_receipt_'):
+        from app.services.tally_goods_receipt import execute
+        return await execute(operation,connector,company,identity,payload,config,journal_path)
+    if isinstance(config,dict) and config.get('receipt_link'):
+        if not operation.startswith(('purchase_gst_','purchase_multi_')):raise TallyError('Unsupported receipt-link operation.')
+        from app.services.tally_receipt_link import execute
+        return await execute(operation,connector,company,identity,payload,config,journal_path)
+    if operation=='invoice_reference_check':
+        from app.services.purchase_identity import check_native
+        return await check_native(connector,company,payload)
     if operation.startswith('purchase_gst_'):
         from app.services.tally_gst_purchase import execute
         return await execute(operation,connector,company,identity,payload,config,journal_path)
@@ -150,9 +166,19 @@ async def execute_sync(operation, *, company, identity, port=None, as_of=None, p
     vouchers=await connector.collection('Voucher',company,payload['date'])
     found=[v for v in vouchers if matches_action(v,payload)]
     if found:
+        guard=(config or {}).get('invoice_guard')
+        if guard:
+            from app.services.purchase_identity import normalized
+            if len(found)!=1 or normalized(value(found[0],'REFERENCE'))!=guard['reference']:
+                return {'status':'needs_review','reason':'Posted invoice reference verification mismatch.'}
         if len(found)!=1 or not verify_voucher(found[0],payload) or not value(found[0],'VOUCHERNUMBER'):
             return {'status':'needs_review','reason':'Voucher details mismatch.'}
         return {'status':'verified','voucher_number':value(found[0],'VOUCHERNUMBER')}
+    guard=(config or {}).get('invoice_guard')
+    if guard and operation!='purchase_reconcile':
+        from app.services.purchase_identity import check_native
+        checked=await check_native(connector,company,guard)
+        if checked['status']!='clear':return {'status':'needs_review','reason':checked['reason'],'uncertain':False}
     if operation=='purchase_validate': return {'status':'ready'}
     if operation=='purchase_reconcile': return {'status':'verification_pending'}
     key=identity+':'+payload['guid']
@@ -160,10 +186,11 @@ async def execute_sync(operation, *, company, identity, port=None, as_of=None, p
         inserted=db.execute('INSERT OR IGNORE INTO writes VALUES (?,?)',(key,'submitting')).rowcount
     if not inserted: return {'status':'verification_pending'}
     try:
-        await connector.post(voucher_xml(payload))
+        from app.services.purchase_identity import reference_xml
+        await connector.post(reference_xml(voucher_xml(payload),guard))
     except TallyRejected as exc:
         return {'status':'failed','reason':str(exc)[:300]}
     except TallyError:
         return {'status':'verification_pending'}
     return await execute_sync('purchase_reconcile', company=company,identity=identity,port=port,
-                             payload=payload,journal_path=journal_path)
+                             payload=payload,config=config,journal_path=journal_path)

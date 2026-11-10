@@ -17,7 +17,11 @@ async def redis_client():return Redis.from_url(get_settings().redis_url,decode_r
 
 
 class BridgeV7(unittest.IsolatedAsyncioTestCase):
-    asyncSetUp=fixtures.DurableTests.asyncSetUp
+    async def asyncSetUp(self):
+        await fixtures.DurableTests.asyncSetUp(self)
+        # Exercise an already-created pre-Day-7 v7 action; new Bills require v9.
+        guard=patch('app.services.purchase_memory_service.prepare_preview',AsyncMock())
+        guard.start();self.addCleanup(guard.stop)
     asyncTearDown=fixtures.DurableTests.asyncTearDown
 
     async def test_v6_cannot_consume_v7_jobs_and_v7_requires_approved_action(self):

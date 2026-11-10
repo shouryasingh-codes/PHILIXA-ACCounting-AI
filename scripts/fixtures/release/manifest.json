@@ -1,0 +1,83 @@
+{
+  "version": "release-fixtures-v1",
+  "scope": "Synthetic safety and regression fixtures; no real accounting writes or cloud OCR calls",
+  "cases": [
+    {
+      "id": "multi-item-mixed-tax-discounts",
+      "expected": "Every line and supported intra/inter-state tax/discount/round-off agrees with fixed Decimal expectations",
+      "tests": [
+        "scripts.test_gst_purchase.Arithmetic.test_intra_inter_mixed_rates_discount_and_disclosed_roundoff",
+        "scripts.test_multi_purchase.MultiProtocol.test_one_twenty_fifty_lines_verify_without_duplicate_delivery"
+      ]
+    },
+    {
+      "id": "duplicate-pdf-photo",
+      "expected": "Identical bytes reuse private original; changed-format same invoice blocks duplicate identity",
+      "tests": [
+        "scripts.test_bill_documents.DocumentTests.test_duplicate_within_and_across_batches_reuses_original",
+        "scripts.test_release_fixture_matrix.PersistedCases.test_duplicate_pdf_and_photo_draft_cannot_bypass_invoice_guard"
+      ]
+    },
+    {
+      "id": "blurry-photo",
+      "expected": "Severely degraded actual local OCR fixture fails visibly, with no fabricated draft/action",
+      "tests": [
+        "scripts.test_release_fixture_matrix.PersistedCases.test_severely_blurred_photo_fails_local_ocr_without_fake_draft"
+      ]
+    },
+    {
+      "id": "missing-pages",
+      "expected": "Printed missing/duplicate/out-of-order pages require complete source and cannot be cleared by provider omission or draft edits",
+      "tests": [
+        "scripts.test_release_fixture_matrix.SourceCases.test_printed_pagination_missing_repeated_and_out_of_order",
+        "scripts.test_release_fixture_matrix.SourceCases.test_pdf_missing_page_evidence_blocks_posting_even_with_correct_buyer",
+        "scripts.test_release_fixture_matrix.PersistedCases.test_missing_pages_survive_provider_omission_and_draft_edit",
+        "scripts.test_release_fixture_matrix.SourceCases.test_complete_separate_invoices_can_each_have_page_one_of_one"
+      ]
+    },
+    {
+      "id": "similar-suppliers",
+      "expected": "Fuzzy name remains a suggestion; explicit exact supplier is distinguishable",
+      "tests": [
+        "scripts.test_release_fixture_matrix.SourceCases.test_two_similar_supplier_names_never_authorize_fuzzy_identity"
+      ]
+    },
+    {
+      "id": "wrong-totals",
+      "expected": "Changed total and contradictory printed taxable/discount evidence never compile or post",
+      "tests": [
+        "scripts.test_multi_purchase.MultiProtocol.test_changed_total_unknown_unit_and_payload_rejected",
+        "scripts.test_gst_native_exports.NativeExports.test_wrong_ocr_discount_and_amount_never_compile"
+      ]
+    },
+    {
+      "id": "malicious-document-instructions",
+      "expected": "Source text/model status, action, scope and tool instructions cannot approve, dispatch, change workspace or create a Tally action",
+      "tests": [
+        "scripts.test_release_fixture_matrix.PersistedCases.test_malicious_document_and_model_fields_cannot_approve_or_change_scope"
+      ]
+    },
+    {
+      "id": "concurrent-edits",
+      "expected": "Concurrent edit during refresh rejects stale preview and preserves corrected draft without action",
+      "tests": [
+        "scripts.test_multi_purchase.MultiDrafts.test_concurrent_edit_during_snapshot_refresh_cannot_preview_stale_lines",
+        "scripts.test_purchase_drafts.DraftTests.test_revision_conflict_and_audit_snapshots"
+      ]
+    },
+    {
+      "id": "cross-workspace-access",
+      "expected": "Other workspace/user cannot read, edit, audit, preview or download another tenant's draft/source",
+      "tests": [
+        "scripts.test_purchase_drafts.DraftTests.test_user_workspace_and_disabled_company_isolation",
+        "scripts.test_bill_documents.DocumentTests.test_private_scope_disabled_company_and_no_object_key_in_response"
+      ]
+    }
+  ],
+  "limits": [
+    "A source without page numbering or other completeness evidence cannot prove a physically missing page.",
+    "Blur fixture represents severe degradation; it does not establish a universal image-quality threshold.",
+    "Cross-format duplicate fixture supplies known extracted identity to isolate duplicate logic; it is not a photo OCR accuracy measurement.",
+    "Malicious-input fixture tests authority boundaries with deterministic/mocked extraction; it does not certify every cloud model against every prompt injection."
+  ]
+}

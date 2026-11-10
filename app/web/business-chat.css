@@ -15,9 +15,17 @@ body { margin: 0; background: #fff; }
 .business-nav-label { font-size:10px;letter-spacing:1.4px;color:#8a938d;margin:32px 8px 12px;font-weight:600; }
 #businessWorkspaceSlot select { width:100%;padding:10px 8px;background:transparent;border:0;color:#4b574f;font-size:12px;font-family:inherit; }
 .business-sidebar-note { margin:auto 8px 36px; }
-.business-chat-list { overflow-y:auto;min-height:60px;max-height:45vh;display:grid;gap:4px;margin-bottom:20px; }
-.business-chat-list button { border:0;border-radius:9px;background:transparent;padding:10px 9px;text-align:left;color:#4b574f;font:inherit;font-size:12px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.business-chat-list button:hover,.business-chat-list button[aria-current="true"] { background:#e5ede7;color:#234f39; }
+.business-chat-list { width:100%;overflow-y:auto;overflow-x:hidden;min-height:60px;max-height:45vh;display:flex;flex-direction:column;gap:3px;margin-bottom:20px; }
+.business-chat-row { display:flex;align-items:center;flex:0 0 auto;min-width:0;width:100%;min-height:38px;border-radius:8px;padding-right:3px; }
+.business-chat-row:hover,.business-chat-row[data-active="true"] { background:#e5ede7; }
+.business-chat-list button { border:0;background:transparent;color:#4b574f;cursor:pointer;font-size:12px; }
+.business-chat-list .business-chat-open { display:block;flex:1;min-width:0;width:0;padding:10px 9px;text-align:left;line-height:18px;border-radius:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.business-chat-row[data-active="true"] .business-chat-open { color:#234f39;font-weight:500; }
+.business-chat-list .business-chat-delete { display:flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:30px;padding:5px;border-radius:6px;color:#7a857d; }
+.business-chat-list .business-chat-delete:hover { background:#f7e7e4;color:#a33e32; }
+.business-chat-list button:disabled { opacity:.45;cursor:wait; }
+.business-history-notice { display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;background:#e8f0ea;border-radius:8px;font-size:11px;flex:0 0 auto; }
+.business-chat-list .business-chat-undo { padding:4px;color:#28684d;font-weight:600;text-decoration:underline; }
 .business-chat-list .business-history-empty { font-size:11px;color:#8a938d;padding:8px; }
 .business-note-icon { font-size:28px;color:#62957b;display:block;margin-bottom:13px; }
 .business-sidebar-note strong { font-size:13px;font-weight:500;line-height:1.8; }
@@ -65,6 +73,12 @@ body { margin: 0; background: #fff; }
 .business-composer-bottom { display:flex;align-items:center;justify-content:space-between;margin-top:10px; }
 .business-composer-bottom>span { font-size:10px;color:#939d96; }
 .business-composer-bottom>div { display:flex;gap:8px; }
+.business-composer-attachments { align-items:center;flex-wrap:wrap;min-width:0; }
+.business-attach { display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:6px 8px;border:0;border-radius:8px;background:transparent;color:#53685b;font:inherit;font-size:12px;cursor:pointer; }
+.business-attach:hover { background:#e8efe9; }
+.business-attach:focus-visible { outline:2px solid #28684d;outline-offset:2px; }
+.business-composer-language { font-size:10px;color:#939d96; }
+@media (max-width:480px) { .business-composer-language { display:none; } }
 .business-mic,.business-send { display:grid;place-items:center;width:36px;height:36px;border-radius:50%;border:0; }
 .business-mic { color:#53685b;background:transparent; }
 .business-mic:hover { background:#e8efe9; }
@@ -147,7 +161,7 @@ body { margin: 0; background: #fff; }
 #billDraftLines legend {font-size:13px;font-weight:600;}
 #billDraftTotal {font-weight:600;padding:8px 0;}
 #billDraftForm label {display:grid;gap:4px;}
-#billDraftForm input,#billDraftForm select {width:100%;padding:8px;border:1px solid #cdded6;border-radius:6px;}
+#billDraftForm input,#billDraftForm select {width:100%;padding:8px;border:1px solid #cdded6;border-radius:6px;background:#fff;color:#27352c!important;-webkit-text-fill-color:#27352c!important;color-scheme:light;}
 #businessDrafts button {padding:8px;border:1px solid #cdded6;border-radius:6px;background:#f5f9f6;color:#245747;cursor:pointer;}
 #businessDrafts button:disabled {opacity:.55;cursor:default;}
 #billDraftStatus {font-size:13px;}
@@ -155,6 +169,23 @@ body { margin: 0; background: #fff; }
 @media(max-width:600px){.bill-drafts-layout {grid-template-columns:1fr;}#billDraftList {max-height:160px;}}
 .document-controls {display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
 .document-controls label {display:grid;gap:4px;}
+.document-quick-only {display:none;}
+.document-quick {max-width:540px;width:calc(100% - 32px);}
+.document-quick .document-manage-only {display:none;}
+.document-quick .document-quick-only {display:block;}
+.document-quick .bill-drafts-layout {display:block;}
+.document-quick .bill-drafts-layout>div:last-child {display:none;}
+.document-quick.document-viewing .bill-drafts-layout>div:last-child {display:block;margin-top:16px;}
+.document-quick #documentList {display:grid;gap:10px;}
+.document-quick .document-upload-area {margin:20px 0 12px;}
+.document-quick .document-file-picker {display:grid;gap:10px;padding:20px;border:1px dashed #a8c2b5;border-radius:12px;background:#f7faf8;}
+.document-file-picker small,.document-upload-note {font-size:12px;color:#66796f;}
+.document-selected-file {display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;}
+.document-selected-file span {min-width:0;overflow-wrap:anywhere;}
+.document-quick #documentUpload {width:100%;margin-top:12px;padding:12px;background:#28684d;color:white;}
+.document-quick #documentUpload:disabled {background:#e2e8e3;color:#7d8f84;}
+.document-quick #documentStatus {font-size:13px;}
+.document-quick #documentManageBills {margin:10px 0 16px;}
 #businessDocuments button,#businessDocuments select {padding:8px;border:1px solid #cdded6;border-radius:6px;background:#f5f9f6;color:#245747;}
 #documentList {display:grid;gap:10px;align-content:start;}
 .document-card {border:1px solid #cdded6;border-radius:8px;padding:10px;overflow-wrap:anywhere;}
@@ -193,3 +224,97 @@ body { margin: 0; background: #fff; }
 #billDraftExpectedTaxes, #billDraftTaxLedgers { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 #billDraftTaxResult { display: block; margin-block: 8px; }
 @media(max-width:650px) { #billDraftExpectedTaxes, #billDraftTaxLedgers { grid-template-columns: 1fr; } }
+
+/* Day 6 accountant queue controls stay usable beside the source/editor. */
+.bill-review-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;padding:10px;border:1px solid #d4e2dc;border-radius:8px;}
+.bill-review-toolbar p,.bill-review-toolbar #billQueueResults {flex-basis:100%;margin:2px 0;font-size:12px;}
+.bill-review-toolbar select {color:#234237;background:#fff;padding:8px;border:1px solid #bad0c5;border-radius:6px;}
+#billDraftList label {display:flex;align-items:center;gap:6px;font-size:12px;}
+#billDraftList input[type=checkbox] {width:18px;height:18px;}
+
+#billDraftList {min-width:0;}
+#billDraftList button {display:block;white-space:normal;width:100%;min-width:0;}
+
+.document-card [hidden] { display: none !important; }
+.purchase-answer-controls[hidden] { display: none !important; }
+.purchase-answer-controls > details {flex-basis:100%;margin:0;}
+.business-tools.purchase-chat-layout {display:grid;grid-template-columns:minmax(0,460px);gap:12px;align-items:start;}
+.purchase-chat-layout > button {justify-self:start;}
+.purchase-choice-card {display:grid;gap:12px;min-width:0;padding:16px;border:1px solid #d8e3da;border-radius:14px;background:#f8fbf9;}
+.purchase-choice-card > strong {font-size:14px;font-weight:600;}
+.purchase-choice-list {display:grid;gap:8px;min-width:0;}
+.business-tools .purchase-choice-list button {text-align:left;width:100%;box-sizing:border-box;white-space:normal;overflow-wrap:anywhere;background:white;padding:12px 14px;line-height:1.5;}
+.purchase-choice-list button:hover {border-color:#438165;background:#eff7f1;}
+.purchase-history-status {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:12px;color:#65796d;}
+.purchase-extra-options {padding-top:2px;font-size:13px;color:#526b5c;}
+.purchase-extra-options > summary {cursor:pointer;padding:6px 0;}
+.purchase-extra-content {display:grid;justify-items:start;gap:12px;padding-top:10px;}
+.purchase-extra-content details {width:100%;}
+#billReceiptLink[hidden] {display:none!important;}
+#billReceiptLink {margin:12px 0;padding:12px;border:1px solid #d8e3da;border-radius:10px;}
+#billReceiptLink select {display:block;width:100%;margin:8px 0;padding:8px;}
+.purchase-history-controls {display:grid;grid-template-columns:minmax(0,460px);align-items:start;gap:10px;}
+.purchase-history-controls > button {justify-self:start;}
+.purchase-history-card {flex-basis:100%;box-sizing:border-box;max-width:460px;padding:16px;border:1px solid #d8e3da;border-radius:14px;background:#f8fbf9;display:grid;gap:10px;}
+.purchase-history-label {font-size:12px;color:#65796d;}
+.purchase-history-card > strong {font-size:16px;overflow-wrap:anywhere;}
+.purchase-history-rate {display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.purchase-history-rate > strong {font-size:20px;color:#205943;}
+.purchase-history-rate > span {font-size:12px;color:#65796d;}
+.purchase-history-card p {margin:0;line-height:1.5;}
+.business-tools .purchase-history-confirm {background:#245b45;color:#fff;border-color:#245b45;justify-self:start;padding:10px 18px;}
+.purchase-history-alternatives {font-size:13px;}
+.purchase-history-alternatives summary {cursor:pointer;color:#436250;padding:4px 0;}
+.purchase-history-options {display:flex;gap:8px;flex-wrap:wrap;padding-top:8px;}
+/* Chat purchases show one task at a time; full accountant workspace stays available. */
+.bill-chat-steps { border:1px solid #cdded6;border-radius:12px;padding:14px;margin-bottom:14px;background:#f5faf7; }
+.bill-chat-steps h3 {margin:0 0 6px;}
+.bill-chat-steps p {margin:6px 0;}
+#billChatSteps[hidden], #billChatPrevious[hidden], #billChatNext[hidden] {display:none!important;}
+#businessDrafts[data-chat-simple="true"] .bill-review-toolbar,
+#businessDrafts[data-chat-simple="true"] .bill-drafts-actions,
+#businessDrafts[data-chat-simple="true"] #billDraftList,
+#businessDrafts[data-chat-simple="true"] #billAutomationPanel,
+#businessDrafts[data-chat-simple="true"] #billDraftExtractionReview,
+#businessDrafts[data-chat-simple="true"] [data-chat-optional="true"] {display:none!important;}
+#businessDrafts[data-chat-simple="true"] #billDraftsLayout {display:block;}
+#businessDrafts[data-chat-simple="true"] {max-width:680px;}
+#businessDrafts[data-chat-simple="true"] #billDraftLines fieldset {display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+#businessDrafts[data-chat-simple="true"] #billDraftLines fieldset button {display:none!important;}
+#businessDrafts[data-chat-simple="true"] #billDraftLines label {margin:0;min-width:0;}
+#businessDrafts[data-chat-simple="true"][data-chat-step="1"] [data-chat-step="2"],
+#businessDrafts[data-chat-simple="true"][data-chat-step="1"] #billDraftTaxFields,
+#businessDrafts[data-chat-simple="true"][data-chat-step="1"] #billDraftSave,
+#businessDrafts[data-chat-simple="true"][data-chat-step="1"] #billDraftMakePreview {display:none!important;}
+#businessDrafts[data-chat-simple="true"][data-chat-step="2"] [data-chat-step="1"],
+#businessDrafts[data-chat-simple="true"][data-chat-step="2"] #billDraftAddLine {display:none!important;}
+.purchase-proposal{flex-basis:100%;padding:14px;border:1px solid var(--border,#d6e2da);border-radius:12px;max-width:560px;line-height:1.6}
+.purchase-proposal p{margin:5px 0}.purchase-proposal details{font-size:.85em}
+.purchase-task-panel{width:100%;max-width:560px;box-sizing:border-box;border:1px solid var(--border,#d6e2da);border-radius:14px;padding:16px;background:var(--surface,#fff);display:flex;flex-direction:column;gap:12px}
+.purchase-task-panel .purchase-proposal,.purchase-task-panel .purchase-choice-card,.purchase-task-panel .purchase-history-card{border:0;padding:0;margin:0;max-width:none;box-shadow:none;background:transparent}
+.purchase-task-panel .purchase-inline-reply{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border,#d6e2da);padding-top:12px}
+.purchase-inline-reply label{display:block;width:100%;font-size:.9em}
+.purchase-inline-reply textarea{display:block;box-sizing:border-box;width:100%;margin-top:7px;padding:10px;border:1px solid var(--border,#d6e2da);border-radius:8px;font:inherit;resize:vertical}
+.purchase-task-panel .purchase-extra-options{margin-top:2px}
+.business-thinking{display:inline-flex;align-items:center;gap:8px;color:inherit}
+.business-thinking-dots{display:inline-flex;align-items:center;gap:4px}
+.business-thinking-dots span{width:4px;height:4px;border-radius:50%;background:currentColor;animation:business-thinking-pulse 1.2s ease-in-out infinite;opacity:.35}
+.business-thinking-dots span:nth-child(2){animation-delay:.16s}
+.business-thinking-dots span:nth-child(3){animation-delay:.32s}
+@keyframes business-thinking-pulse{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-3px);opacity:1}}
+@media(prefers-reduced-motion:reduce){.business-thinking-dots span{animation:none;opacity:.65}}
+
+.chat-attachment-composer {padding:8px 4px;max-width:100%;}
+.chat-attachment-composer[hidden] {display:none;}
+.chat-attachment-composer select {max-width:100%;padding:6px;border:1px solid #cbdcd5;border-radius:8px;background:white;}
+.chat-attachment-chips {display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+.chat-attachment-chip {display:flex;align-items:center;gap:8px;border:1px solid #cbdcd5;border-radius:10px;padding:6px;max-width:100%;}
+.chat-attachment-chip span {overflow-wrap:anywhere;min-width:0;}
+.chat-attachment-chip img {width:36px;height:36px;object-fit:cover;border-radius:4px;}
+.chat-attachment-chip button {padding:4px 8px;}
+.chat-bill-card {display:block;width:min(100%,480px);box-sizing:border-box;border:1px solid #cbdcd5;border-radius:12px;padding:12px;margin:6px 0;overflow-wrap:anywhere;text-align:left;background:#fbfdfc;}
+.chat-bill-card p {margin:6px 0;font-size:12px;}
+.chat-bill-card button {margin:4px 6px 0 0;}
+.chat-bill-original {width:min(900px,95vw);height:85vh;border:1px solid #cbdcd5;border-radius:12px;}
+.chat-bill-original iframe {width:100%;height:90%;border:0;}
+.chat-bill-original img {display:block;max-width:100%;height:auto;}

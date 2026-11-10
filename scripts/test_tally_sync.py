@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch, AsyncMock
 from xml.etree import ElementTree as ET
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from fastapi import HTTPException
 from app.database.session import AsyncSessionLocal
 from app.models.organization import Organization
@@ -139,6 +139,36 @@ class DurableTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(sync,'refresh_company',AsyncMock(side_effect=TallyError('Tally closed'))):
             result=await sync.preview_purchase(self.db,self.principal,self.parsed)
         self.assertIn('preview',result);return await self.db.get(TallyAction,result['preview']['token'])
+    async def test_remote_missing_configuration_collects_item_without_authorizing_writes(self):
+        await self.db.delete(self.cfg);await self.db.commit()
+        parsed=commands.ParsedCommand(intent='purchase_create',quantity='20',unit='pcs')
+        result=await sync.preview_purchase(self.db,self.principal,parsed)
+        self.assertIn('kis item',result['response'])
+        self.assertEqual(result['purchase_setup']['company'],self.company.name)
+        choice=next(c for c in result['tally_choices'] if c['name']=='Cement')
+        self.assertEqual(choice['command']['fields']['company_id'],self.company.id)
+        self.assertEqual(str(choice['command']['fields']['quantity']),'20')
+        complete=await sync.preview_purchase(self.db,self.principal,self.parsed)
+        self.assertEqual(complete['purchase_setup']['company'],self.company.name)
+        self.assertNotIn('preview',complete)
+        self.assertIsNone(await self.db.get(TallyConnection,self.org))
+        self.assertEqual(list((await self.db.scalars(select(TallyAction).where(TallyAction.organization_id==self.org))).all()),[])
+    async def test_missing_configuration_cannot_bypass_company_access_or_choose_other_config(self):
+        self.cfg.company='Different Company';await self.db.commit()
+        result=await sync.preview_purchase(self.db,self.principal,self.parsed)
+        self.assertEqual(result['purchase_setup']['company'],self.company.name)
+        self.assertNotIn('preview',result)
+        self.company.enabled=False;await self.db.commit()
+        result=await sync.preview_purchase(self.db,self.principal,self.parsed)
+        self.assertNotIn('purchase_setup',result)
+        self.assertNotIn('preview',result)
+    async def test_company_selection_precedes_configuration_gate(self):
+        other=TallyReadCompany(id=uuid.uuid4().hex,organization_id=self.org,identity='other',name='Other practice',enabled=True,aliases=[],member_ids=[],refresh_requested=False)
+        self.db.add(other);await self.db.delete(self.cfg);await self.db.commit()
+        result=await sync.preview_purchase(self.db,self.principal,self.parsed)
+        self.assertEqual(len(result['tally_choices']),2)
+        self.assertNotIn('purchase_setup',result)
+        self.assertNotIn('preview',result)
     async def test_offline_preview_confirm_idempotency_projection_cancel(self):
         action=await self.preview()
         await sync.confirm_queued(self.db,self.principal,action)
@@ -330,8 +360,8 @@ class DurableTests(unittest.IsolatedAsyncioTestCase):
                 request=commands.CommandRequest(text=text,conversation_history=history)
                 result=await graph.run_business_graph(request,self.principal,self.db)
                 if index<2:
-                    self.assertIn('tally_form',result)
-                    self.assertEqual(result['tally_form']['intent'],'purchase_create')
+                    self.assertIn('purchase_assistant',result)
+                    self.assertEqual(result['purchase_assistant']['field'],'0:quantity' if index==0 else '0:rate')
                     self.assertNotIn('preview',result)
                 else:
                     self.assertIn('preview',result)

@@ -92,16 +92,27 @@ async def execute_multi(operation, connector, company, identity, payload, config
         except (TallyError,ValueError,TypeError,KeyError):return {'status':'needs_review','reason':'Purchase lines/masters/configuration invalid or changed.'}
     found=[v for v in await connector.collection('Voucher',company,p['date']) if matches_action(v,p)]
     if found:
+        guard=(config or {}).get('invoice_guard')
+        if guard:
+            from app.services.purchase_identity import normalized
+            if len(found)!=1 or normalized(value(found[0],'REFERENCE'))!=guard['reference']:
+                return {'status':'needs_review','reason':'Posted invoice reference verification mismatch.'}
         if len(found)!=1 or not verify_multi(found[0],p) or not value(found[0],'VOUCHERNUMBER'):
             return {'status':'needs_review','reason':'Voucher line details mismatch.'}
         return {'status':'verified','voucher_number':value(found[0],'VOUCHERNUMBER')}
+    guard=(config or {}).get('invoice_guard')
+    if guard and operation!='purchase_multi_reconcile':
+        from app.services.purchase_identity import check_native
+        checked=await check_native(connector,company,guard)
+        if checked['status']!='clear':return {'status':'needs_review','reason':checked['reason'],'uncertain':False}
     if operation=='purchase_multi_validate':return {'status':'ready'}
     if operation=='purchase_multi_reconcile':return {'status':'verification_pending'}
     if operation!='purchase_multi_post':raise TallyError('Unsupported multi purchase operation.')
     with journal(journal_path) as db:
         inserted=db.execute('INSERT OR IGNORE INTO writes VALUES (?,?)',(identity+':'+p['guid'],'submitting')).rowcount
     if not inserted:return {'status':'verification_pending'}
-    try:await connector.post(multi_xml(p))
+    from app.services.purchase_identity import reference_xml
+    try:await connector.post(reference_xml(multi_xml(p),guard))
     except TallyRejected as exc:return {'status':'failed','reason':str(exc)[:300]}
     except TallyError:return {'status':'verification_pending'}
     return await execute_multi('purchase_multi_reconcile',connector,company,identity,p,config,journal_path)

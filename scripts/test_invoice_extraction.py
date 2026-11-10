@@ -79,6 +79,7 @@ def synthetic_invoice_image(format='PNG'):
 class InvoiceExtractionTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         await fixtures.DurableTests.asyncSetUp(self)
+        self.local_mode=patch.dict("os.environ",{"PHILIXA_LOCAL_OCR_ENABLED":"0"});self.local_mode.start()
         self.enqueue = patch.object(docs, 'enqueue', AsyncMock())
         self.enqueue.start()
         from app.services import invoice_extraction_jobs as extraction_jobs
@@ -87,6 +88,7 @@ class InvoiceExtractionTests(unittest.IsolatedAsyncioTestCase):
         self.batch = await docs.create_batch(self.db, self.principal, docs.BatchCreate(company_id=self.company.id))
 
     async def asyncTearDown(self):
+        self.local_mode.stop()
         self.extraction_enqueue.stop()
         self.settings.stop()
         self.enqueue.stop()
@@ -232,6 +234,18 @@ class InvoiceExtractionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any('No line items extracted' in w for w in res_zero['warnings']))
 
     # 4. End-to-end PDF Extraction to Editable Draft
+    async def test_printed_tax_is_included_without_inventing_tax_treatment(self):
+        raw={'supplier_name':'Supplier','invoice_number':'TEST-TAX','invoice_date':'2026-11-02',
+             'lines':[{'item_name':'Goods','quantity':'2','unit':'No','rate':'100','amount':'200','amount_basis':'before_tax','confidence':0.95}],
+             'expected_taxes':{'IGST':'36'},'total_amount':'236','tax_treatment':None}
+        result=extractor.verify_and_match(raw,{'suppliers':[],'items':[]})
+        self.assertEqual(result['calculated_total'],'236.00')
+        self.assertFalse(any('Invoice total mismatch' in w for w in result['warnings']))
+        self.assertIsNone(raw['tax_treatment'])
+        raw['lines'][0]['amount_basis']='tax_inclusive'
+        result=extractor.verify_and_match(raw,{'suppliers':[],'items':[]})
+        self.assertEqual(result['calculated_total'],'200.00')
+
     async def test_extract_single_pdf_invoice_to_editable_draft(self):
         pdf_bytes = synthetic_invoice_pdf(pages=1, invoice_no='INV-2026-999', supplier='UltraTech Cement Ltd')
         docid = await self.upload_and_ready(pdf_bytes, filename='bill-single.pdf')
@@ -437,17 +451,17 @@ class InvoiceExtractionTests(unittest.IsolatedAsyncioTestCase):
         async def parse(data,mode='inspect',page=None):
             return json.dumps({'_page_count':20,'_source_text':'invoice','lines':[]}).encode() if mode=='extract' else b'\x89PNG'+bytes([page])
         settings=type('S',(),{'gemini_api_key':'fake','ai_api_key':'','ai_review_model':'gemini-2.5-flash','ai_timeout_seconds':20})()
-        with patch.object(extractor,'get_settings',return_value=settings),patch.object(docs,'parse',side_effect=parse),patch.object(extractor,'call_gemini_multimodal_extraction',AsyncMock(return_value={'lines':[]})) as call:
+        with patch('app.services.invoice_ai_budget.limits',return_value=(Decimal('1'),Decimal('.01'))),patch.object(extractor,'get_settings',return_value=settings),patch.object(docs,'parse',side_effect=parse),patch.object(extractor,'call_gemini_multimodal_extraction',AsyncMock(return_value={'lines':[]})) as call:
             await extractor.extract_invoice_data(b'pdf','application/pdf')
             self.assertEqual(len(call.call_args.args[0]),20)
             self.assertEqual(call.call_args.args[0][-1],b'\x89PNG'+bytes([20]))
         from app.ai import provider
-        def post(url,payload,headers,timeout_seconds):
+        async def post(url,payload,headers,timeout_seconds):
             images=payload['contents'][0]['parts'][1:]
             self.assertEqual(len(images),20);self.assertEqual(images[0]['inline_data']['mime_type'],'image/jpeg')
             self.assertIn('response_schema',payload['generationConfig'])
             return {'candidates':[{'content':{'parts':[{'text':'{"lines":[]}'}]}}]}
-        with patch.object(extractor,'get_settings',return_value=settings),patch.object(provider,'_post_json',side_effect=post):
+        with patch.object(extractor,'get_settings',return_value=settings),patch.object(extractor,'_post_invoice_json',side_effect=post):
             self.assertEqual(await extractor.call_gemini_multimodal_extraction([b'\xff\xd8\xff']*20),{'lines':[]})
 
     async def test_idempotent_extraction_and_split_preserve_edits(self):

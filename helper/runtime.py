@@ -9,8 +9,9 @@ import subprocess
 import time
 import xml.etree.ElementTree as ET
 
-VERSION = '3.5.1'
-HOME = Path(os.environ.get('LOCALAPPDATA', '.')) / 'PhilixaConnect'
+VERSION = '3.8.0'
+from helper.package_runtime import data_home, is_packaged, startup_state, startup_enabled
+HOME = data_home()
 TASK = 'PhilixaTallyConnector-' + hashlib.sha256(getpass.getuser().encode()).hexdigest()[:12]
 EXE = HOME / 'PhilixaConnect.exe'
 SHORTCUT = Path(os.environ.get('APPDATA', '.')) / 'Microsoft/Windows/Start Menu/Programs/Philixa Tally Connector.lnk'
@@ -69,6 +70,10 @@ def powershell(script):
     if result.returncode: raise RuntimeError('Windows setup failed')
 
 def register_startup():
+    if is_packaged():
+        state = startup_state()
+        write_settings({**read_settings(), 'startup_configured': startup_enabled(state), 'connector_version': VERSION})
+        return
     user = subprocess.run(['whoami.exe'], capture_output=True, text=True, check=True, timeout=10).stdout.strip()
     path = HOME / 'startup-task.xml'
     path.write_text(task_xml(user, EXE), encoding='utf-16')
@@ -92,6 +97,8 @@ def register_startup():
     milestone('startup_registered')
 
 def remove_startup():
+    if is_packaged():
+        raise RuntimeError('Manage packaged startup and uninstall in Windows Settings')
     subprocess.run(['schtasks.exe','/Delete','/TN',TASK,'/F'], capture_output=True,
                    creationflags=subprocess.CREATE_NO_WINDOW, timeout=30)
     if SHORTCUT.exists(): SHORTCUT.unlink()

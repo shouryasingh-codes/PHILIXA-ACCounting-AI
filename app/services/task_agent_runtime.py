@@ -63,6 +63,78 @@ def direct_stock_question(state):
     text=(state.get('messages') or [''])[-1].strip().casefold()
     return bool(re.fullmatch(r'(?:stock\s+kitn[ae]\s+hai|(?:saara|sara|all)\s+stock\s+(?:dikhao|batao)|(?:show|check)\s+(?:all\s+)?(?:stock|inventory)|inventory\s+dikhao|सभी सामान का स्टॉक बताओ)[?!.।\s]*',text))
 
+def format_tally_blockers(state: dict, data: dict) -> str | None:
+    """Articulate Tally blockers directly in conversational Hinglish:
+    - Mention supplier name and total amount.
+    - State clearly which masters are missing in Tally (e.g. TimeNet Solutions is not in Sundry Creditors; 6 stock items missing).
+    - Ask clearly: 'Kya main Tally me [Supplier] ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?'
+    """
+    issues = data.get('issues') or []
+    proposal = data.get('proposal') or {}
+    content = proposal.get('content') or {}
+
+    supplier_missing = any(v.get('kind') == 'identity' and v.get('field') == 'party_name' for v in issues)
+    missing_items = [v for v in issues if v.get('kind') == 'identity' and str(v.get('field', '')).endswith(':item_name')]
+
+    if not supplier_missing and not missing_items:
+        return None
+
+    # 1. Supplier Name
+    supplier = (content.get('party_name') or '').strip()
+    if not supplier:
+        for source in state.get('attachment_sources', []):
+            for d in source.get('drafts', []):
+                p = (d.get('content', {}).get('party_name') or '').strip()
+                if not p:
+                    p = ((d.get('extraction_metadata') or {}).get('source_evidence', {}).get('supplier_name', {}).get('raw') or '').strip()
+                if p:
+                    supplier = p
+                    break
+            if supplier:
+                break
+    if not supplier:
+        supplier = 'Supplier'
+
+    # 2. Total Amount
+    total = content.get('invoice_total') or (proposal.get('totals') or {}).get('invoice_total') or (proposal.get('totals') or {}).get('total')
+    if not total:
+        for source in state.get('attachment_sources', []):
+            for d in source.get('drafts', []):
+                t = d.get('content', {}).get('invoice_total')
+                if t:
+                    total = t
+                    break
+            if total:
+                break
+
+    lines = []
+
+    # Line 1: Mention supplier name and total amount
+    if total:
+        tot_str = str(total).strip()
+        if not tot_str.startswith(('₹', 'Rs')):
+            tot_str = f"₹{tot_str}"
+        lines.append(f"{supplier} ka bill mila hai total amount {tot_str} ka.")
+    else:
+        lines.append(f"{supplier} ka bill mila hai.")
+
+    # Line 2: State clearly which masters are missing in Tally
+    missing_desc = []
+    if supplier_missing:
+        missing_desc.append(f"{supplier} Sundry Creditors me nahi hai")
+    if missing_items:
+        missing_desc.append(f"{len(missing_items)} stock items missing hain")
+
+    lines.append(f"Tally me {'; '.join(missing_desc)}.")
+
+    # Line 3: Ask clearly
+    if supplier_missing:
+        lines.append(f"Kya main Tally me {supplier} ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?")
+    elif missing_items:
+        lines.append(f"Kya main Tally me missing stock items bana doon ya kisi existing item se map karna hai?")
+
+    return "\n".join(lines)
+
 def available_tools(state,tools):
     groups={'purchase':{'company_masters','read_purchase_draft','purchase_context','record_purchase_situation','apply_user_message','create_purchase_draft','check_purchase_tax','purchase_preview','evaluate_automation'},
         'reads':{'company_masters','read_stock','read_report'},'documents':{'list_documents','document_status','extract_document','read_bill_fields'},
@@ -109,6 +181,10 @@ async def run(state: dict, tools: list[Tool], choose, persist, budget, completio
             break
         permitted=available_tools(state,tools)
         seed=state.get('routing_first_step')
+        from app.services.intent_router import is_bill_entry_intent
+        has_entry = state.get('outcome') == 'verified_entry' or any(is_bill_entry_intent(m) for m in state.get('messages', []))
+        if not seed and not state['executions'] and state.get('draft_id') and has_entry and state.get('attachment_document_ids') and any(t.name=='purchase_context' and t.effect=='draft' for t in permitted):
+            seed = {'kind': 'tool', 'tool': 'purchase_context', 'arguments': {'draft_id': state['draft_id']}, 'summary': 'Saved bill ki purchase validation check kar rahi hoon.'}
         if seed and not state['executions'] and state['model_rounds']==0:
             decision=Decision.model_validate(seed)
             if decision.tool not in {'create_purchase_draft','apply_user_message','purchase_context'} or not any(t.name==decision.tool and t.effect=='draft' for t in permitted):
@@ -200,7 +276,14 @@ async def run(state: dict, tools: list[Tool], choose, persist, budget, completio
             state['action_id'] = result.data['action_id']
         if result.status == 'waiting_context' and result.data.get('document_id'):
             state['waiting_document_id'] = result.data['document_id']
-        if result.data.get('response'):
+        if tool.name == 'purchase_context':
+            blocker_text = format_tally_blockers(state, result.data)
+            if blocker_text:
+                result.data['response'] = blocker_text
+                state['summary'] = blocker_text
+            elif result.data.get('response'):
+                state['summary'] = result.data['response']
+        elif result.data.get('response'):
             state['summary'] = result.data['response']
         state['status'] = 'running' if result.status == 'ok' else result.status
         answer=settled_stock_answer(state)

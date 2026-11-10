@@ -116,6 +116,8 @@ def is_bill_entry_intent(message: str) -> bool:
         return False
     if re.search(r'\b(?:aur|and|or)\b', norm):
         return False
+    if re.search(r'\bprepare\b', norm):
+        return False
     if re.search(r'\d+\s*(?:bags?|pcs?|nos?|kg|ton|box|boxes|rate|\/)', norm) or re.search(r'\brate\s*\d+', norm):
         return False
     has_entry_action = bool(re.search(r'\b(?:entry|enter|record|chadha(?:do|de|na)?|daal(?:do|de|na)?|punch(?:ing)?|post(?:ing)?|process(?:ing)?|maar(?:do|de|o)?|mar(?:do|de|o)?)\b', norm))

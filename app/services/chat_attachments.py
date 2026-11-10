@@ -72,12 +72,16 @@ async def accept(db,principal,request):
         # A new source must not silently replace an approved/active draft.
         raise HTTPException(409,'Send new files as a new task; existing task remains saved.')
     stamp=tasks.now();message_id=secrets.token_hex(16);task_id=secrets.token_hex(16)
+    from app.services.intent_router import is_bill_entry_intent
+    has_entry = is_bill_entry_intent(request.text or '')
+    outcome = 'verified_entry' if has_entry else 'answer'
+    tool_groups = ['documents', 'purchase'] if has_entry else ['documents']
     task=AgentTask(id=task_id,organization_id=principal.organization_id,user_id=principal.user_id,
         company_id=company_id,request_id=request.request_id,request_hash=digest,revision=0,status='queued',
         created_at=stamp,updated_at=stamp,state=dict(messages=[request.text],
-        session_id=principal.session_id,company_identity=company.identity,outcome='answer',
+        session_id=principal.session_id,company_identity=company.identity,outcome=outcome,
         attachment_document_ids=ids,attachment_initial=True,attachment_message_id=message_id,
-        tool_groups=['documents'],executions=[],observations=[],
+        tool_groups=tool_groups,executions=[],observations=[],
         summary='Bills saved hain. File aur details check ho rahi hain.'))
     db.add(task);await db.flush()
     db.add(ChatBillMessage(id=message_id,organization_id=principal.organization_id,user_id=principal.user_id,
@@ -141,8 +145,15 @@ async def advance(db,principal,state,company_id,queue=None):
                 ' · '+str(content.get('invoice_number') or 'Invoice reference unclear')+
                 (' · Bill total ₹'+str(total) if total is not None else ' · Total review karein'))
     state['attachment_generations']={source['document_id']:source['extraction_generation'] for source in sources}
+    from app.services.intent_router import is_bill_entry_intent
+    has_entry = state.get('outcome') == 'verified_entry' or any(is_bill_entry_intent(m) for m in state.get('messages', []))
     if len(all_drafts)==1:
-        state.update(draft_id=all_drafts[0]['id'],draft_revision=all_drafts[0]['revision'],outcome='draft')
+        target_draft=all_drafts[0]['id']
+        target_outcome='verified_entry' if has_entry else 'draft'
+        state.update(draft_id=target_draft,draft_revision=all_drafts[0]['revision'],outcome=target_outcome)
+        if has_entry:
+            state['tool_groups']=list(dict.fromkeys([*state.get('tool_groups',[]),'documents','purchase']))
+            state['routing_first_step']={'kind':'tool','tool':'purchase_context','arguments':{'draft_id':target_draft},'summary':'Saved bill ki purchase validation check kar rahi hoon.'}
     ending='Original ke saath Review bill karein.' if all_drafts else 'Bill ki details extract nahi hui; draft nahi bana. View original se file dekhein.'
     state.update(attachment_initial=False,status='needs_input',issues=[] if all_drafts else [{'code':'document_extraction_failed'}],
         summary='\n'.join(lines)+'\n'+ending+' Is upload se nayi Tally entry post nahi hui.')

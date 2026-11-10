@@ -154,9 +154,20 @@ async def advance(db,principal,state,company_id,queue=None):
         if has_entry:
             state['tool_groups']=list(dict.fromkeys([*state.get('tool_groups',[]),'documents','purchase']))
             state['routing_first_step']={'kind':'tool','tool':'purchase_context','arguments':{'draft_id':target_draft},'summary':'Saved bill ki purchase validation check kar rahi hoon.'}
-    ending='Original ke saath Review bill karein.' if all_drafts else 'Bill ki details extract nahi hui; draft nahi bana. View original se file dekhein.'
-    state.update(attachment_initial=False,status='needs_input',issues=[] if all_drafts else [{'code':'document_extraction_failed'}],
-        summary='\n'.join(lines)+'\n'+ending+' Is upload se nayi Tally entry post nahi hui.')
+    if has_entry and all_drafts:
+        draft_content = all_drafts[0].get('content', {})
+        p_name = draft_content.get('party_name') or 'Supplier'
+        inv = draft_content.get('invoice_number')
+        inv_part = f", Invoice #{inv}" if inv else ""
+        tot = draft_content.get('invoice_total')
+        tot_part = f", Total ₹{tot}" if tot else ""
+        ending = f"Maine {p_name} ka bill{inv_part}{tot_part} check kar liya hai. Tally me entry ke liye masters aur details verify ho rahi hain."
+        state.update(attachment_initial=False,status='needs_input',issues=[],
+            summary=ending)
+    else:
+        ending='Original ke saath Review bill karein.' if all_drafts else 'Bill ki details extract nahi hui; draft nahi bana. View original se file dekhein.'
+        state.update(attachment_initial=False,status='needs_input',issues=[] if all_drafts else [{'code':'document_extraction_failed'}],
+            summary='\n'.join(lines)+'\n'+ending+' Is upload se nayi Tally entry post nahi hui.')
     return state
 
 

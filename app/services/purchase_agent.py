@@ -198,23 +198,48 @@ async def state(db,principal,draft_id,prefix=''):
             else:
                 message.append("Lekin Tally me supplier ka Sundry Creditor ledger nahi mila. Kis supplier se map karna hai ya naya ledger banayein?")
         elif ':item_name' in field:
-            try:
-                idx = int(field.split(':')[0])
-                line = lines[idx] if idx < len(lines) else {}
-                item_name = line.get('item_name') or f"Item {idx+1}"
-                qty = line.get('quantity')
-                unit = line.get('unit') or ''
-                qty_str = f" ({qty} {unit})".strip() if qty else ""
+            missing_items = [v for v in issues if v.get('kind') == 'identity' and str(v.get('field', '')).endswith(':item_name')]
+            sup_prefix = f"{supplier} ka " if supplier and supplier != 'Supplier' else ""
+            tot_prefix = f" (Total: {tot_str})" if tot_str else ""
+            inv_prefix = f", Invoice #{inv_num}" if inv_num else ""
+            
+            if len(missing_items) > 1:
+                item_bullets = []
+                for mi in missing_items[:6]:
+                    try:
+                        i = int(str(mi.get('field', '0')).split(':')[0])
+                        l = lines[i] if i < len(lines) else {}
+                    except (ValueError, IndexError):
+                        l = {}
+                    name = l.get('item_name') or f"Item {len(item_bullets) + 1}"
+                    q = l.get('quantity')
+                    u = l.get('unit') or ''
+                    r = l.get('rate')
+                    spec = []
+                    if q:
+                        spec.append(f"{q} {u}".strip())
+                    if r:
+                        spec.append(f"@ ₹{r}")
+                    spec_str = f" ({', '.join(spec)})" if spec else ""
+                    item_bullets.append(f"  {len(item_bullets) + 1}. {name}{spec_str}")
 
-                if idx == 0 and len(lines) > 1:
-                    sup_prefix = f"{supplier} ka " if supplier and supplier != 'Supplier' else ""
-                    tot_prefix = f" (Total: {tot_str})" if tot_str else ""
-                    message.append(f"Maine {sup_prefix}bill{tot_prefix} check kar liya hai. Is bill ke {len(lines)} items Tally ke stock items me match nahi hue.")
-                    message.append(f"Item {idx+1} — '{item_name}'{qty_str} — ke liye Tally me kaunsa stock item select karein, ya naya item bana doon?")
-                else:
-                    message.append(f"Item {idx+1} — '{item_name}'{qty_str} — ke liye Tally me kaunsa stock item select karein, ya naya item bana doon?")
-            except (ValueError, IndexError):
-                message.append(identity.get('message') or 'Item identity check karein.')
+                if len(missing_items) > 6:
+                    item_bullets.append(f"  ...aur baaki {len(missing_items) - 6} items.")
+
+                message.append(f"Maine {sup_prefix}bill{tot_prefix} check kar liya hai. Is bill ke {len(missing_items)} items Tally ke stock items me match nahi hue:\n" + "\n".join(item_bullets))
+                message.append("Kya main Tally me ye naye stock items bana doon, ya kisi existing item se map karna chahenge?")
+            else:
+                try:
+                    idx = int(field.split(':')[0])
+                    line = lines[idx] if idx < len(lines) else {}
+                    item_name = line.get('item_name') or f"Item {idx+1}"
+                    qty = line.get('quantity')
+                    unit = line.get('unit') or ''
+                    qty_str = f" ({qty} {unit})".strip() if qty else ""
+                    message.append(f"Maine {sup_prefix}bill{tot_prefix} check kar liya hai. Is bill ka item Tally ke stock items me match nahi hua.")
+                    message.append(f"Item — '{item_name}'{qty_str} — ke liye Tally me kaunsa stock item select karein, ya naya item bana doon?")
+                except (ValueError, IndexError):
+                    message.append(identity.get('message') or 'Item identity check karein.')
         else:
             message.append(identity.get('message') or 'Identity detail confirm karein.')
     elif blockers:

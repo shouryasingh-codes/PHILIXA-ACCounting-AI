@@ -67,6 +67,7 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
     """Articulate Tally blockers directly in conversational Hinglish:
     - Mention supplier name and total amount.
     - State clearly which masters are missing in Tally (e.g. TimeNet Solutions is not in Sundry Creditors; 6 stock items missing).
+    - List the items clearly with quantity and rates.
     - Ask clearly: 'Kya main Tally me [Supplier] ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?'
     """
     issues = data.get('issues') or []
@@ -107,33 +108,79 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
             if total:
                 break
 
-    lines = []
+    # 3. Invoice Number
+    inv_num = content.get('invoice_number')
+    if not inv_num:
+        for source in state.get('attachment_sources', []):
+            for d in source.get('drafts', []):
+                i = d.get('content', {}).get('invoice_number')
+                if i:
+                    inv_num = i
+                    break
+            if inv_num:
+                break
 
-    # Line 1: Mention supplier name and total amount
-    if total:
-        tot_str = str(total).strip()
-        if not tot_str.startswith(('₹', 'Rs')):
-            tot_str = f"₹{tot_str}"
-        lines.append(f"{supplier} ka bill mila hai total amount {tot_str} ka.")
-    else:
-        lines.append(f"{supplier} ka bill mila hai.")
+    lines_content = content.get('lines', [])
+    tot_str = str(total).strip() if total else ''
+    if tot_str and not tot_str.startswith(('₹', 'Rs')):
+        tot_str = f"₹{tot_str}"
 
-    # Line 2: State clearly which masters are missing in Tally
-    missing_desc = []
-    if supplier_missing:
-        missing_desc.append(f"{supplier} Sundry Creditors me nahi hai")
-    if missing_items:
-        missing_desc.append(f"{len(missing_items)} stock items missing hain")
+    blocks = []
 
-    lines.append(f"Tally me {'; '.join(missing_desc)}.")
+    # Greeting / bill confirmation
+    ack_parts = [f"Maine {supplier} ka bill"]
+    details = []
+    if inv_num:
+        details.append(f"Invoice #{inv_num}")
+    if tot_str:
+        details.append(f"Total: {tot_str}")
+    if details:
+        ack_parts.append(f"({', '.join(details)})")
+    ack_parts.append("check kar liya hai.")
+    blocks.append(" ".join(ack_parts))
 
-    # Line 3: Ask clearly
-    if supplier_missing:
-        lines.append(f"Kya main Tally me {supplier} ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?")
+    # Master blockers
+    if supplier_missing and missing_items:
+        blocks.append(f"Tally me entry post karne ke liye ye masters confirm karne hain:\n"
+                      f"• Supplier: {supplier} Sundry Creditors me nahi hai\n"
+                      f"• Stock Items: Is bill ke {len(missing_items)} stock items missing hain:")
+    elif supplier_missing:
+        blocks.append(f"Tally me {supplier} Sundry Creditors me nahi hai.")
     elif missing_items:
-        lines.append(f"Kya main Tally me missing stock items bana doon ya kisi existing item se map karna hai?")
+        blocks.append(f"Tally me is bill ke {len(missing_items)} stock items missing hain:")
 
-    return "\n".join(lines)
+    # Detailed items listing
+    if missing_items:
+        item_bullets = []
+        for idx, item_issue in enumerate(missing_items[:6]):
+            try:
+                line_idx = int(str(item_issue.get('field', '0')).split(':')[0])
+                line = lines_content[line_idx] if line_idx < len(lines_content) else {}
+            except (ValueError, IndexError):
+                line = {}
+            name = line.get('item_name') or f"Item {idx + 1}"
+            qty = line.get('quantity')
+            unit = line.get('unit') or ''
+            rate = line.get('rate')
+            spec = []
+            if qty:
+                spec.append(f"{qty} {unit}".strip())
+            if rate:
+                spec.append(f"@ ₹{rate}")
+            spec_str = f" ({', '.join(spec)})" if spec else ""
+            item_bullets.append(f"  {idx + 1}. {name}{spec_str}")
+
+        if len(missing_items) > 6:
+            item_bullets.append(f"  ...aur baaki {len(missing_items) - 6} items.")
+        blocks.append("\n".join(item_bullets))
+
+    # Actionable closing question
+    if supplier_missing:
+        blocks.append(f"Kya main Tally me {supplier} ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?")
+    elif missing_items:
+        blocks.append("Kya main Tally me missing stock items bana doon ya kisi existing item se map karna hai?")
+
+    return "\n\n".join(blocks)
 
 def available_tools(state,tools):
     groups={'purchase':{'company_masters','read_purchase_draft','purchase_context','record_purchase_situation','apply_user_message','create_purchase_draft','check_purchase_tax','purchase_preview','evaluate_automation'},

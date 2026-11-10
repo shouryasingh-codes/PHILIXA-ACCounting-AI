@@ -63,11 +63,78 @@ def direct_stock_question(state):
     text=(state.get('messages') or [''])[-1].strip().casefold()
     return bool(re.fullmatch(r'(?:stock\s+kitn[ae]\s+hai|(?:saara|sara|all)\s+stock\s+(?:dikhao|batao)|(?:show|check)\s+(?:all\s+)?(?:stock|inventory)|inventory\s+dikhao|सभी सामान का स्टॉक बताओ)[?!.।\s]*',text))
 
+def format_inr(val) -> str:
+    try:
+        if val is None or str(val).strip() == "":
+            return ""
+        clean = str(val).replace('₹', '').replace('Rs.', '').replace('Rs', '').replace(',', '').strip()
+        num = float(clean)
+        parts = f"{num:.2f}".split('.')
+        whole, dec = parts[0], parts[1]
+        if len(whole) <= 3:
+            formatted = whole
+        else:
+            last3 = whole[-3:]
+            rest = whole[:-3]
+            groups = []
+            while len(rest) > 2:
+                groups.insert(0, rest[-2:])
+                rest = rest[:-2]
+            if rest:
+                groups.insert(0, rest)
+            groups.append(last3)
+            formatted = ",".join(groups)
+        return f"₹{formatted}.{dec}"
+    except Exception:
+        return f"₹{val}"
+
+
+def format_qty(qty, unit) -> str:
+    try:
+        if qty is None or str(qty).strip() == "":
+            return ""
+        q_float = float(str(qty).strip())
+        q_str = f"{int(q_float)}" if q_float.is_integer() else f"{q_float:.2f}"
+        u_str = (unit or "").strip()
+        if u_str.lower() in ('no', 'nos', 'no.'):
+            u_str = 'Nos'
+        elif u_str.lower() in ('pc', 'pcs', 'piece', 'pieces'):
+            u_str = 'Pcs'
+        return f"{q_str} {u_str}".strip() if u_str else q_str
+    except Exception:
+        return f"{qty} {unit}".strip()
+
+
+def clean_item_name(name: str) -> str:
+    if not name:
+        return "Item"
+    cleaned = name.strip()
+    cleaned = re.sub(r'\b13-(\d{4,5})\b', r'i3-\1', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\s*\(\d+-Core.*?\)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\(10th Generation\)', '(10th Gen)', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
+    return cleaned
+
+
+def format_bill_date(date_str: str) -> str:
+    try:
+        if not date_str:
+            return ""
+        parts = str(date_str).strip().split('-')
+        if len(parts) == 3 and len(parts[0]) == 4:
+            from datetime import datetime
+            dt = datetime.strptime(str(date_str).strip(), '%Y-%m-%d')
+            return dt.strftime('%d-%b-%Y')
+        return str(date_str)
+    except Exception:
+        return str(date_str)
+
+
 def format_tally_blockers(state: dict, data: dict) -> str | None:
     """Articulate Tally blockers directly in conversational Hinglish:
-    - Mention supplier name and total amount.
+    - Mention supplier name, invoice number, date, and formatted INR total.
     - State clearly which masters are missing in Tally (e.g. TimeNet Solutions is not in Sundry Creditors; 6 stock items missing).
-    - List the items clearly with quantity and rates.
+    - List the items cleanly with readable names, quantity, and rates.
     - Ask clearly: 'Kya main Tally me [Supplier] ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?'
     """
     issues = data.get('issues') or []
@@ -108,48 +175,53 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
             if total:
                 break
 
-    # 3. Invoice Number
+    # 3. Invoice Number & Date
     inv_num = content.get('invoice_number')
-    if not inv_num:
+    entry_date = content.get('entry_date')
+    if not inv_num or not entry_date:
         for source in state.get('attachment_sources', []):
             for d in source.get('drafts', []):
-                i = d.get('content', {}).get('invoice_number')
-                if i:
-                    inv_num = i
-                    break
-            if inv_num:
+                c = d.get('content', {})
+                if not inv_num and c.get('invoice_number'):
+                    inv_num = c.get('invoice_number')
+                if not entry_date and c.get('entry_date'):
+                    entry_date = c.get('entry_date')
+            if inv_num and entry_date:
                 break
 
     lines_content = content.get('lines', [])
-    tot_str = str(total).strip() if total else ''
-    if tot_str and not tot_str.startswith(('₹', 'Rs')):
-        tot_str = f"₹{tot_str}"
+    tot_formatted = format_inr(total) if total else ''
 
     blocks = []
 
-    # Greeting / bill confirmation
-    ack_parts = [f"Maine {supplier} ka bill"]
-    details = []
+    # 1. Header with invoice, date and total:
+    header_lines = [f"Maine {supplier} ka bill check kar liya hai:"]
+    meta = []
     if inv_num:
-        details.append(f"Invoice #{inv_num}")
-    if tot_str:
-        details.append(f"Total: {tot_str}")
-    if details:
-        ack_parts.append(f"({', '.join(details)})")
-    ack_parts.append("check kar liya hai.")
-    blocks.append(" ".join(ack_parts))
+        meta.append(f"Invoice: #{inv_num}")
+    if entry_date:
+        f_date = format_bill_date(entry_date)
+        if f_date:
+            meta.append(f"Date: {f_date}")
+    if tot_formatted:
+        meta.append(f"Total: {tot_formatted}")
 
-    # Master blockers
+    if meta:
+        header_lines.append(f"• {'  |  '.join(meta)}")
+
+    blocks.append("\n".join(header_lines))
+
+    # 2. Master blockers articulation:
     if supplier_missing and missing_items:
-        blocks.append(f"Tally me entry post karne ke liye ye masters confirm karne hain:\n"
+        blocks.append(f"Tally me entry chadhane ke liye ye masters confirm karne hain:\n"
                       f"• Supplier: {supplier} Sundry Creditors me nahi hai\n"
                       f"• Stock Items: Is bill ke {len(missing_items)} stock items missing hain:")
     elif supplier_missing:
         blocks.append(f"Tally me {supplier} Sundry Creditors me nahi hai.")
     elif missing_items:
-        blocks.append(f"Tally me is bill ke {len(missing_items)} stock items missing hain:")
+        blocks.append(f"Tally me entry chadhane ke liye ye {len(missing_items)} items match nahi hue:")
 
-    # Detailed items listing
+    # 3. Item bullets:
     if missing_items:
         item_bullets = []
         for idx, item_issue in enumerate(missing_items[:6]):
@@ -158,27 +230,31 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
                 line = lines_content[line_idx] if line_idx < len(lines_content) else {}
             except (ValueError, IndexError):
                 line = {}
-            name = line.get('item_name') or f"Item {idx + 1}"
+            raw_name = line.get('item_name') or f"Item {idx + 1}"
+            name = clean_item_name(raw_name)
             qty = line.get('quantity')
             unit = line.get('unit') or ''
+            qty_formatted = format_qty(qty, unit)
             rate = line.get('rate')
+            rate_formatted = format_inr(rate) if rate else ""
+
             spec = []
-            if qty:
-                spec.append(f"{qty} {unit}".strip())
-            if rate:
-                spec.append(f"@ ₹{rate}")
-            spec_str = f" ({', '.join(spec)})" if spec else ""
+            if qty_formatted:
+                spec.append(qty_formatted)
+            if rate_formatted:
+                spec.append(f"@ {rate_formatted}")
+            spec_str = f" — {' '.join(spec)}" if spec else ""
             item_bullets.append(f"  {idx + 1}. {name}{spec_str}")
 
         if len(missing_items) > 6:
             item_bullets.append(f"  ...aur baaki {len(missing_items) - 6} items.")
         blocks.append("\n".join(item_bullets))
 
-    # Actionable closing question
+    # 4. Actionable closing question:
     if supplier_missing:
         blocks.append(f"Kya main Tally me {supplier} ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?")
     elif missing_items:
-        blocks.append("Kya main Tally me missing stock items bana doon ya kisi existing item se map karna hai?")
+        blocks.append("Kya main Tally me ye naye stock items bana doon, ya kisi existing item se map karna chahenge?")
 
     return "\n\n".join(blocks)
 

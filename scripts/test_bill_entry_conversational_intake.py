@@ -139,7 +139,7 @@ class BillEntryIntakeTests(unittest.IsolatedAsyncioTestCase):
         # Check requirements:
         # 1. Mention supplier name and total amount
         self.assertIn('TimeNet Solutions', articulation)
-        self.assertIn('384798.00', articulation)
+        self.assertTrue('3,84,798.00' in articulation or '384798.00' in articulation)
         # 2. State clearly which masters are missing in Tally
         self.assertIn('Sundry Creditors me nahi hai', articulation)
         self.assertIn('6 stock items missing', articulation)
@@ -158,7 +158,7 @@ class BillEntryIntakeTests(unittest.IsolatedAsyncioTestCase):
         }
         articulation = format_tally_blockers(state, data)
         self.assertIn('Sharma Traders', articulation)
-        self.assertIn('15000.00', articulation)
+        self.assertTrue('15,000.00' in articulation or '15000.00' in articulation)
         self.assertIn('Sharma Traders Sundry Creditors me nahi hai', articulation)
         self.assertIn('Kya main Tally me Sharma Traders ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?', articulation)
 
@@ -216,7 +216,7 @@ class BillEntryIntakeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['status'], 'needs_input')
         self.assertEqual(result['model_rounds'], 0)
         self.assertIn('TimeNet Solutions', result['summary'])
-        self.assertIn('384798.00', result['summary'])
+        self.assertTrue('3,84,798.00' in result['summary'] or '384798.00' in result['summary'])
         self.assertIn('Sundry Creditors me nahi hai', result['summary'])
         self.assertIn('6 stock items missing', result['summary'])
         self.assertIn('Kya main Tally me TimeNet Solutions ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?', result['summary'])

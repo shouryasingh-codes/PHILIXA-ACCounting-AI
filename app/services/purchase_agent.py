@@ -180,64 +180,95 @@ async def state(db,principal,draft_id,prefix=''):
 
     supplier = (content.get('party_name') or '').strip()
     total = content.get('invoice_total')
-    tot_str = f"₹{total}" if total and not str(total).startswith(('₹', 'Rs')) else (str(total) if total else '')
     inv_num = content.get('invoice_number')
+    entry_date = content.get('entry_date')
     lines = content.get('lines', [])
+
+    from app.services.task_agent_runtime import format_inr, format_qty, clean_item_name, format_bill_date
+    tot_formatted = format_inr(total) if total else ''
 
     if identity:
         field = identity.get('field') or ''
         if field == 'party_name':
-            if inv_num and tot_str:
-                message.append(f"Maine bill (Invoice: {inv_num}, Total: {tot_str}) check kar liya hai.")
-            elif tot_str:
-                message.append(f"Maine bill (Total: {tot_str}) check kar liya hai.")
-            else:
-                message.append("Maine bill check kar liya hai.")
+            meta = []
+            if inv_num:
+                meta.append(f"Invoice: #{inv_num}")
+            if entry_date:
+                f_date = format_bill_date(entry_date)
+                if f_date:
+                    meta.append(f"Date: {f_date}")
+            if tot_formatted:
+                meta.append(f"Total: {tot_formatted}")
+
+            header = f"Maine {supplier or 'supplier'} ka bill check kar liya hai:"
+            if meta:
+                header += f"\n• {'  |  '.join(meta)}"
+            message.append(header)
+
             if supplier and supplier != 'Supplier':
                 message.append(f"Lekin Tally me supplier '{supplier}' ka Sundry Creditor ledger nahi mila.\nKya main Tally me naya ledger bana doon, ya neeche diye kisi existing supplier se map karein?")
             else:
                 message.append("Lekin Tally me supplier ka Sundry Creditor ledger nahi mila. Kis supplier se map karna hai ya naya ledger banayein?")
         elif ':item_name' in field:
             missing_items = [v for v in issues if v.get('kind') == 'identity' and str(v.get('field', '')).endswith(':item_name')]
-            sup_prefix = f"{supplier} ka " if supplier and supplier != 'Supplier' else ""
-            tot_prefix = f" (Total: {tot_str})" if tot_str else ""
-            inv_prefix = f", Invoice #{inv_num}" if inv_num else ""
-            
+
+            header_lines = [f"Maine {supplier or 'bill'} ka bill check kar liya hai:"]
+            meta = []
+            if inv_num:
+                meta.append(f"Invoice: #{inv_num}")
+            if entry_date:
+                f_date = format_bill_date(entry_date)
+                if f_date:
+                    meta.append(f"Date: {f_date}")
+            if tot_formatted:
+                meta.append(f"Total: {tot_formatted}")
+            if meta:
+                header_lines.append(f"• {'  |  '.join(meta)}")
+            header = "\n".join(header_lines)
+
             if len(missing_items) > 1:
                 item_bullets = []
-                for mi in missing_items[:6]:
+                for idx, mi in enumerate(missing_items[:6]):
                     try:
                         i = int(str(mi.get('field', '0')).split(':')[0])
                         l = lines[i] if i < len(lines) else {}
                     except (ValueError, IndexError):
                         l = {}
-                    name = l.get('item_name') or f"Item {len(item_bullets) + 1}"
+                    name = clean_item_name(l.get('item_name') or f"Item {idx + 1}")
                     q = l.get('quantity')
                     u = l.get('unit') or ''
+                    q_formatted = format_qty(q, u)
                     r = l.get('rate')
+                    r_formatted = format_inr(r) if r else ""
                     spec = []
-                    if q:
-                        spec.append(f"{q} {u}".strip())
-                    if r:
-                        spec.append(f"@ ₹{r}")
-                    spec_str = f" ({', '.join(spec)})" if spec else ""
-                    item_bullets.append(f"  {len(item_bullets) + 1}. {name}{spec_str}")
+                    if q_formatted:
+                        spec.append(q_formatted)
+                    if r_formatted:
+                        spec.append(f"@ {r_formatted}")
+                    spec_str = f" — {' '.join(spec)}" if spec else ""
+                    item_bullets.append(f"  {idx + 1}. {name}{spec_str}")
 
                 if len(missing_items) > 6:
                     item_bullets.append(f"  ...aur baaki {len(missing_items) - 6} items.")
 
-                message.append(f"Maine {sup_prefix}bill{tot_prefix} check kar liya hai. Is bill ke {len(missing_items)} items Tally ke stock items me match nahi hue:\n" + "\n".join(item_bullets))
-                message.append("Kya main Tally me ye naye stock items bana doon, ya kisi existing item se map karna chahenge?")
+                message.append(f"{header}\n\nTally me entry chadhane ke liye ye {len(missing_items)} items match nahi hue:\n\n" + "\n".join(item_bullets) + "\n\nKya main Tally me ye naye stock items bana doon, ya kisi existing item se map karna chahenge?")
             else:
                 try:
                     idx = int(field.split(':')[0])
                     line = lines[idx] if idx < len(lines) else {}
-                    item_name = line.get('item_name') or f"Item {idx+1}"
+                    item_name = clean_item_name(line.get('item_name') or f"Item {idx+1}")
                     qty = line.get('quantity')
                     unit = line.get('unit') or ''
-                    qty_str = f" ({qty} {unit})".strip() if qty else ""
-                    message.append(f"Maine {sup_prefix}bill{tot_prefix} check kar liya hai. Is bill ka item Tally ke stock items me match nahi hua.")
-                    message.append(f"Item — '{item_name}'{qty_str} — ke liye Tally me kaunsa stock item select karein, ya naya item bana doon?")
+                    q_formatted = format_qty(qty, unit)
+                    rate = line.get('rate')
+                    r_formatted = format_inr(rate) if rate else ""
+                    spec = []
+                    if q_formatted:
+                        spec.append(q_formatted)
+                    if r_formatted:
+                        spec.append(f"@ {r_formatted}")
+                    spec_str = f" — {' '.join(spec)}" if spec else ""
+                    message.append(f"{header}\n\nTally me entry chadhane ke liye ye item match nahi hua:\n  1. {item_name}{spec_str}\n\nKya main Tally me ye naya stock item bana doon, ya kisi existing item se map karna chahenge?")
                 except (ValueError, IndexError):
                     message.append(identity.get('message') or 'Item identity check karein.')
         else:

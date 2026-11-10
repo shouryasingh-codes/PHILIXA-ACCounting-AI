@@ -110,6 +110,22 @@ def normalize_command(text: str) -> str:
     return t
 
 
+def is_create_masters_intent(message: str) -> bool:
+    if not message:
+        return False
+    norm = normalize_command(message)
+    if re.search(r'\b(?:nahi|nhi|mat|dont|cancel|stop)\b', norm):
+        return False
+    has_make = bool(re.search(r'\b(?:bana(?:do|de|na|o)?|create|add)\b', norm))
+    has_target = bool(re.search(r'\b(?:stock|item|items|supplier|ledger|masters?|maal|party|dono|sab|sare)\b', norm))
+    has_tally = bool(re.search(r'\btally\b', norm))
+    if has_make and (has_target or has_tally):
+        return True
+    if re.fullmatch(r'(?:(?:h[a-z]*|yes|ok)\s+)?(?:tally\s+me\s+)?(?:bana\s*(?:do|de|o|dijiye)|create\s*(?:kar\s*do|kr\s*do|karo|krde|kar|kro))\b.*', norm):
+        return True
+    return False
+
+
 def is_bill_entry_intent(message: str) -> bool:
     norm = normalize_command(message)
     if re.search(r'\b(?:what|kya|kiya|kitna|kitne|kaun|kaunsa|who|batao?|dikhao?|show|check|help|sukriya|thanks?|bye)\b', norm):
@@ -153,6 +169,11 @@ def fast_route(message,context,*,selection=False,refresh=False):
             return RouteDecision(intent='task_reply',relation='continue_current',handler='domain_continuation',
                 target_task_id=context['task_id'],reason='typed_numeric_answer',explicit_fields=[Mention(
                     path=f'lines.{pending[1]}.{pending[2]}',value=text,quote=message.strip())])
+    if is_create_masters_intent(message):
+        target_draft = context.get('draft_id')
+        if context.get('can_continue') and context.get('task_id'):
+            return RouteDecision(intent='bill_processing', relation='continue_current', handler='domain_continuation',
+                                 target_task_id=context['task_id'], target_draft_id=target_draft, reason='fast_create_masters')
     if text in {'haan','han','yes','done','ok','okay','जी','हाँ'}:
         return RouteDecision(intent='clarification',relation='standalone',handler='clarify',
             clarification='Kis saved task ya detail ke liye keh rahe hain? Current review se option chunein.',reason='ambiguous_acknowledgement')

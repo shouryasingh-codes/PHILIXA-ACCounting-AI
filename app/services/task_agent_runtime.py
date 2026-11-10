@@ -269,12 +269,12 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
     if supplier_missing:
         blocks.append(f"Kya main Tally me {supplier} ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?")
     elif missing_items:
-        blocks.append("Tally me ye stock items exist nahi karte. Kya aap inhe Tally ke existing items se map karna chahenge, ya pehle Tally me ye items bana kar sync karenge?")
+        blocks.append(f"Kya main Tally me ye {len(missing_items)} naye stock items bana doon, ya kisi existing item se map karna chahenge?")
 
     return "\n\n".join(blocks)
 
 def available_tools(state,tools):
-    groups={'purchase':{'company_masters','read_purchase_draft','purchase_context','record_purchase_situation','apply_user_message','create_purchase_draft','check_purchase_tax','purchase_preview','evaluate_automation'},
+    groups={'purchase':{'company_masters','read_purchase_draft','purchase_context','record_purchase_situation','apply_user_message','create_purchase_draft','check_purchase_tax','purchase_preview','evaluate_automation','create_tally_masters'},
         'reads':{'company_masters','read_stock','read_report'},'documents':{'list_documents','document_status','extract_document','read_bill_fields'},
         'receipts':{'record_purchase_situation','receipt_preview','link_receipt','read_purchase_draft'}}
     active=state.get('tool_groups') or ['reads' if state.get('outcome')=='answer' else 'purchase']
@@ -319,15 +319,18 @@ async def run(state: dict, tools: list[Tool], choose, persist, budget, completio
             break
         permitted=available_tools(state,tools)
         seed=state.get('routing_first_step')
-        from app.services.intent_router import is_bill_entry_intent
+        from app.services.intent_router import is_bill_entry_intent, is_create_masters_intent
+        latest_msg = (state.get('messages') or [''])[-1]
         has_entry = state.get('outcome') == 'verified_entry' or any(is_bill_entry_intent(m) for m in state.get('messages', []))
-        if not seed and not state['executions'] and state.get('draft_id') and has_entry and state.get('attachment_document_ids') and any(t.name=='purchase_context' and t.effect=='draft' for t in permitted):
+        if not seed and not state['executions'] and state.get('draft_id') and is_create_masters_intent(latest_msg) and any(t.name=='create_tally_masters' and t.effect=='draft' for t in permitted):
+            seed = {'kind': 'tool', 'tool': 'create_tally_masters', 'arguments': {'draft_id': state['draft_id'], 'create_supplier': True, 'create_items': True}, 'summary': 'Tally me missing masters create kar raha hoon.'}
+        elif not seed and not state['executions'] and state.get('draft_id') and has_entry and state.get('attachment_document_ids') and any(t.name=='purchase_context' and t.effect=='draft' for t in permitted):
             seed = {'kind': 'tool', 'tool': 'purchase_context', 'arguments': {'draft_id': state['draft_id']}, 'summary': 'Saved bill ki purchase validation check kar rahi hoon.'}
         if seed and not state['executions'] and state['model_rounds']==0:
             decision=Decision.model_validate(seed)
-            if decision.tool not in {'create_purchase_draft','apply_user_message','purchase_context'} or not any(t.name==decision.tool and t.effect=='draft' for t in permitted):
+            if decision.tool not in {'create_purchase_draft','apply_user_message','purchase_context','create_tally_masters'} or not any(t.name==decision.tool and t.effect=='draft' for t in permitted):
                 raise ValueError('Invalid server routing seed')
-            if decision.tool=='purchase_context' and (not state.get('attachment_document_ids') or decision.arguments.get('draft_id')!=state.get('draft_id')):
+            if decision.tool in {'purchase_context', 'create_tally_masters'} and (not state.get('attachment_document_ids') or decision.arguments.get('draft_id')!=state.get('draft_id')):
                 raise ValueError('Invalid saved bill routing seed')
             state.pop('routing_first_step',None)
         elif direct_stock_question(state) and not state['executions'] and any(t.name=='read_stock' and t.effect=='read' for t in permitted):

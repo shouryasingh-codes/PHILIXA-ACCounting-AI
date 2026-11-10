@@ -440,18 +440,33 @@
     }else if(data.purchase_assistant?.choices?.length&&(!singleCard||data.status!=='waiting_context')){
       const options=document.createElement('section');options.className='purchase-choice-card';
       options.setAttribute('aria-label',data.purchase_assistant.field==='party_name'?'Supplier selection':'Purchase options');
-      if(data.purchase_assistant.field==='party_name'){
-        const heading=document.createElement('strong');heading.textContent='Kis supplier se kharida?';options.append(heading);
-        const text=(data.response||'').split('\n').filter(line=>!line.startsWith('Kis supplier se kharida?')).join('\n');
-        if(text)updateMessage?.(text);
-      }
+      const allIssues=data.issues||data.purchase_context?.issues||[];
+      const hasMissingSupplier=allIssues.some(i=>i.kind==='identity'&&i.field==='party_name');
+      const missingItemIssues=allIssues.filter(i=>i.kind==='identity'&&String(i.field||'').endsWith(':item_name'));
+      const hasMissingItems=missingItemIssues.length>0;
+
       const choices=document.createElement('div');choices.className='purchase-choice-list';options.append(choices);
-      if(data.purchase_assistant.field?.endsWith(':item_name')){
+
+      if(hasMissingSupplier&&hasMissingItems){
+        toolButton(choices,'✨ Tally me Supplier aur Stock Items bana do',()=>submit('Tally me Supplier aur Stock Items bana do'));
+        toolButton(choices,'🔗 Existing masters se map karein',()=>submit('Existing masters se map karna hai'));
+      }else if(hasMissingItems){
+        const itemCount=missingItemIssues.length;
+        toolButton(choices,`✨ Tally me ye ${itemCount} naye stock items bana do`,()=>submit('Tally me naye stock items bana do'));
         toolButton(choices,'🔗 Existing item se map karein',()=>submit('Existing item se map karna hai'));
         toolButton(choices,'🔄 Tally items sync karein',()=>submit('Tally items sync karo'));
-        if(data.purchase_assistant.choices?.length){
+      }else if(hasMissingSupplier){
+        toolButton(choices,'✨ Tally me Supplier bana do',()=>submit('Tally me Supplier bana do'));
+        toolButton(choices,'🔗 Existing supplier se map karein',()=>submit('Existing supplier se map karna hai'));
+      }
+
+      if(data.purchase_assistant.choices?.length){
+        const isIdentityField=data.purchase_assistant.field==='party_name'||data.purchase_assistant.field?.endsWith(':item_name');
+        if(isIdentityField){
           const existDetails=document.createElement('details');existDetails.className='purchase-history-alternatives';
-          const existSummary=document.createElement('summary');existSummary.textContent='Existing stock items me se chunein';existDetails.append(existSummary);
+          const existSummary=document.createElement('summary');
+          existSummary.textContent=data.purchase_assistant.field==='party_name'?'Existing suppliers me se chunein':'Existing stock items me se chunein';
+          existDetails.append(existSummary);
           const existOpts=document.createElement('div');existOpts.className='purchase-choice-list';existDetails.append(existOpts);
           data.purchase_assistant.choices.forEach(choice=>{
             toolButton(existOpts,choice,()=>{
@@ -461,17 +476,17 @@
             });
           });
           options.append(existDetails);
-        }
-      }else{
-        data.purchase_assistant.choices.forEach(choice=>{
-          const isSuggestedRate=data.purchase_assistant.field?.endsWith(':rate')&&(data.purchase_context?.suggestions||[]).some(s=>s.field===data.purchase_assistant.field&&s.value===choice);
-          const label=isSuggestedRate?'Haan, ₹'+Number(choice).toLocaleString('en-IN',{maximumFractionDigits:2})+' rate':choice;
-          toolButton(choices,label,()=>{
-            const offer=(data.selections||[]).find(o=>o.kind==='identity'&&o.value===choice);
-            if(data.task_id&&offer)return submit(choice,false,{selection:{reference:offer.reference,draft_revision:offer.draft_revision,evidence_version:offer.evidence_version}});
-            return submit(choice,false,{purchase_reply:data.purchase_assistant});
+        }else{
+          data.purchase_assistant.choices.forEach(choice=>{
+            const isSuggestedRate=data.purchase_assistant.field?.endsWith(':rate')&&(data.purchase_context?.suggestions||[]).some(s=>s.field===data.purchase_assistant.field&&s.value===choice);
+            const label=isSuggestedRate?'Haan, ₹'+Number(choice).toLocaleString('en-IN',{maximumFractionDigits:2})+' rate':choice;
+            toolButton(choices,label,()=>{
+              const offer=(data.selections||[]).find(o=>o.kind==='identity'&&o.value===choice);
+              if(data.task_id&&offer)return submit(choice,false,{selection:{reference:offer.reference,draft_revision:offer.draft_revision,evidence_version:offer.evidence_version}});
+              return submit(choice,false,{purchase_reply:data.purchase_assistant});
+            });
           });
-        });
+        }
       }
       tools.append(options);
     }

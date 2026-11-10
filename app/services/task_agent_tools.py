@@ -29,6 +29,11 @@ class DraftSituation(DraftId):
     message_index:int=Field(ge=0,le=1000)
 
 
+class CreateMastersArgs(DraftId):
+    create_supplier: bool = Field(default=True)
+    create_items: bool = Field(default=True)
+
+
 class NewPurchase(Empty):
     message_index: int = Field(ge=0,le=1000)
     updates: list[Mention] = Field(min_length=1,max_length=200)
@@ -369,6 +374,15 @@ def registry(db, principal, company_id, state):
         verified=result.get('capability')=='read_result'
         return ToolResult(status='ok' if verified else 'needs_input',data=result,verified=verified)
 
+    async def create_masters(args):
+        from app.services.tally_master_service import create_missing_masters_in_tally
+        result = await create_missing_masters_in_tally(
+            db, principal, args['draft_id'],
+            create_supplier=args.get('create_supplier', True),
+            create_items=args.get('create_items', True)
+        )
+        return ToolResult(status='ok', data=result)
+
     tools = [Tool('request_capability_group','Expose another permitted capability group when the task needs it.',CapabilityGroup,'read',authorize,expand),
         Tool('list_companies', 'List permitted companies; ask user when company is ambiguous.', Empty, 'read', authorize, companies)]
     if company_id:
@@ -390,6 +404,7 @@ def registry(db, principal, company_id, state):
             Tool('link_receipt', 'Link exact full goods receipt to actual invoice through existing guards.', ReceiptLink, 'draft', authorize, link),
             Tool('evaluate_automation', 'Use existing policy/release gates; model confidence cannot authorise posting.', DraftId, 'write', authorize, auto),
             Tool('read_report', 'Read an allowlisted company report using existing rollout gates; do not invent period dates.', ReportQuery, 'read', authorize, report),
+            Tool('create_tally_masters', 'Create missing supplier ledger and stock items directly in Tally Prime from draft bill.', CreateMastersArgs, 'draft', authorize, create_masters),
         ])
     if state.get('outcome') == 'answer':
         return [tool for tool in tools if tool.effect == 'read']

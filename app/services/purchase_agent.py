@@ -258,7 +258,7 @@ async def state(db,principal,draft_id,prefix=''):
                 if len(missing_items) > 6:
                     item_bullets.append(f"  ...aur baaki {len(missing_items) - 6} items.")
 
-                message.append(f"{header}\n\nTally me entry chadhane ke liye ye {len(missing_items)} items match nahi hue:\n\n" + "\n".join(item_bullets) + "\n\nTally me ye stock items exist nahi karte. Kya aap inhe Tally ke existing items se map karna chahenge, ya pehle Tally me ye items bana kar sync karenge?")
+                message.append(f"{header}\n\nTally me entry chadhane ke liye ye {len(missing_items)} items match nahi hue:\n\n" + "\n".join(item_bullets) + f"\n\nKya main Tally me ye {len(missing_items)} naye stock items bana doon, ya kisi existing item se map karna chahenge?")
             else:
                 try:
                     idx = int(field.split(':')[0])
@@ -275,7 +275,7 @@ async def state(db,principal,draft_id,prefix=''):
                     if r_formatted:
                         spec.append(f"@ {r_formatted}")
                     spec_str = f" — {' '.join(spec)}" if spec else ""
-                    message.append(f"{header}\n\nTally me entry chadhane ke liye ye item match nahi hua:\n  1. {item_name}{spec_str}\n\nTally me ye stock item exist nahi karta. Kya aap ise Tally ke kisi existing item se map karna chahenge, ya pehle Tally me create karke sync karenge?")
+                    message.append(f"{header}\n\nTally me entry chadhane ke liye ye item match nahi hua:\n  1. {item_name}{spec_str}\n\nKya main Tally me ye stock item bana doon, ya kisi existing item se map karna chahenge?")
                 except (ValueError, IndexError):
                     message.append(identity.get('message') or 'Item identity check karein.')
         else:

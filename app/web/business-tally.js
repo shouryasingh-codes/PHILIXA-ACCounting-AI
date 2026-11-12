@@ -430,7 +430,10 @@
         toolButton(tools,'Is purchase ka rate ₹'+offer.value+' hai',()=>submit('Suggested rate ₹'+offer.value+' is purchase ke liye confirm hai',false,
           {selection:{reference:offer.reference,draft_revision:offer.draft_revision,evidence_version:offer.evidence_version}}));
       });
-      if(proposal.can_prepare_preview)toolButton(tools,'Validate & show final preview',()=>submit('Final preview',false,{purchase_reply:{...data.purchase_assistant,prepare_preview:true,evidence_version:data.evidence_version}}));
+      if(proposal.can_prepare_preview){
+        const previewBtn=toolButton(tools,'✨ Final preview check karke Tally me post karein',()=>submit('Final preview',false,{purchase_reply:{...data.purchase_assistant,prepare_preview:true,evidence_version:data.evidence_version}}));
+        if(previewBtn)previewBtn.classList.add('purchase-primary-action-btn');
+      }
       if(!singleCard&&data.status!=='waiting_context'&&!data.issues?.some(i=>i.kind==='identity'))toolButton(tools,'Refresh Tally context',async()=>{
         try{
           if(data.task_id){await submit('Tally context refresh',false,{context_refresh:true});return;}
@@ -538,7 +541,14 @@
       reason.textContent=data.purchase_context.native_history_reason||'Tally history abhi verify nahi hui. Rate khud batayein; purana rate assume nahi karunga.';tools.append(reason);
     }
     let extraTools=tools;
-    const compactFacts=singleCard&&data.status==='needs_input'&&data.proposal?.content?.party_name&&!data.receipt_ready&&!hasIdentityBlockers;
+    const facts=data.purchase_situation||{};
+    const hasMissingFacts=(!facts.bill_status&&!data.proposal?.content?.invoice_number)
+      || (!facts.goods_status&&!data.goods_receipt?.goods_status)
+      || (!facts.received_on&&!data.goods_receipt?.received_on)
+      || (!facts.rate_basis&&!data.goods_receipt?.rate_basis)
+      || (data.proposal?.content?.lines||[]).some((line,index)=>line.rate==null&&!(data.suggestions||[]).some(s=>s.field===`${index}:rate`));
+
+    const compactFacts=singleCard&&data.status==='needs_input'&&data.proposal?.content?.party_name&&!data.receipt_ready&&!hasIdentityBlockers&&hasMissingFacts;
     if(singleCard&&data.status==='needs_input'){
       if(data.goods_receipt){const route=document.createElement('p');route.textContent='Goods received · bill pending';tools.append(route);}
       if(!compactFacts&&!hasIdentityBlockers)(data.situation_choices||[]).forEach(choice=>toolButton(tools,choice,()=>submit(choice)));
@@ -547,7 +557,6 @@
     if(compactFacts){
       const form=document.createElement('form');form.className='purchase-inline-reply';
       const heading=document.createElement('strong');heading.textContent='Bas bachi hui details ek saath confirm karein';form.append(heading);
-      const facts=data.purchase_situation||{};
       const controls=[];
       function selectFact(title,options){
         const label=document.createElement('label');label.textContent=title;
@@ -555,8 +564,8 @@
         [['','Chunein…'],...options].forEach(([value,text])=>{const option=document.createElement('option');option.value=value;option.textContent=text;input.append(option);});
         label.append(input);form.append(label);controls.push(()=>input.value);return input;
       }
-      if(!facts.bill_status&&!data.proposal.content.invoice_number)selectFact('Bill',[['Bill baad mein','Abhi nahi mila'],['Bill mil gaya','Mil gaya hai']]);
-      if(!facts.goods_status)selectFact('Maal',[['Maal aa gaya','Mil chuka hai'],['Maal abhi nahi aaya','Abhi nahi mila']]);
+      if(!facts.bill_status&&!data.proposal?.content?.invoice_number)selectFact('Bill',[['Bill baad mein','Abhi nahi mila'],['Bill mil gaya','Mil gaya hai']]);
+      if(!facts.goods_status&&!data.goods_receipt?.goods_status)selectFact('Maal',[['Maal aa gaya','Mil chuka hai'],['Maal abhi nahi aaya','Abhi nahi mila']]);
       if(!facts.received_on&&!data.goods_receipt?.received_on){
         const label=document.createElement('label');label.textContent='Maal milne ki date (mil chuka ho toh)';
         const date=document.createElement('input');date.type='date';label.append(date);form.append(label);

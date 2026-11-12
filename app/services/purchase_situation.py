@@ -94,6 +94,7 @@ async def state(db,principal,draft_id):
             if any(line.get('rate') is None for line in row.content.get('lines',[])):questions.append('Actual rate bhi ek saath bata sakte hain.')
             result['response']=' '.join(questions)
             result['situation_choices']=['Bill mil gaya','Bill baad mein']
+    result['purchase_situation'] = situation
     return result
 
 

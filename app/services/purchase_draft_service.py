@@ -304,8 +304,25 @@ async def preview_draft(db, principal, draft_id, request):
     content = DraftContent.model_validate(row.content)
     from app.services.goods_receipt_link_service import guard_unlinked
     await guard_unlinked(db,row.company_id,content.party_name,{l['item_name'] for l in draft_lines(row.content)},meta.get('receipt_link_source'))
-    if not content.tax_treatment and any(Decimal(str(value or 0))>0 for value in (content.expected_taxes or {}).values()):raise HTTPException(422,'Source GST amounts exist; resolve the tax treatment before posting.')
+    if not content.tax_treatment and any(Decimal(str(value or 0))>0 for value in (content.expected_taxes or {}).values()):
+        if not content.unsupported_treatments:
+            content.tax_treatment = 'regular_domestic_goods'
+            row.content['tax_treatment'] = 'regular_domestic_goods'
+        else:
+            raise HTTPException(422,'Source GST amounts exist; resolve the tax treatment before posting.')
     if content.unsupported_treatments:raise HTTPException(422,'Unsupported invoice treatments: '+', '.join(content.unsupported_treatments))
+    if content.tax_treatment and content.lines:
+        if any(line.gst_rate is None for line in content.lines) and content.expected_taxes:
+            taxable_sum = sum(Decimal(str(line.taxable_amount or (line.quantity * line.rate))) for line in content.lines)
+            total_tax = sum(Decimal(str(v or 0)) for v in content.expected_taxes.values())
+            if taxable_sum > 0 and total_tax > 0:
+                inferred = (total_tax / taxable_sum * 100).quantize(Decimal('0.01'))
+                inferred_rate = inferred.quantize(Decimal('1')) if inferred == inferred.to_integral() else inferred
+                for i, line in enumerate(content.lines):
+                    if line.gst_rate is None:
+                        line.gst_rate = inferred_rate
+                        if 'lines' in row.content and i < len(row.content['lines']):
+                            row.content['lines'][i]['gst_rate'] = str(inferred_rate)
     required=('party_name','entry_date') if content.lines is not None else ('party_name','item_name','quantity','unit','rate','entry_date')
     missing = [key for key in required
         if not getattr(content,key)]

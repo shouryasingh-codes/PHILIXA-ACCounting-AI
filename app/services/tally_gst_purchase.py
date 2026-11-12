@@ -47,6 +47,7 @@ def effective(rows,stamp):
     candidates=[]
     for row in rows:
         raw=value(row,'APPLICABLEFROM') or value(row,'FROMDATE')
+        if not raw or not raw.strip():continue
         try:when=date.fromisoformat(raw) if '-' in raw else datetime.strptime(raw,'%Y%m%d').date()
         except ValueError:raise TallyError('GST master effective date missing/invalid.')
         if when<=date.fromisoformat(stamp):candidates.append((when,row))
@@ -171,7 +172,8 @@ def compile_purchase(catalog,content,profile,config,guid):
     if content.get('place_of_supply')!=company_state:raise TallyError('Place of supply must match receiving company state; bill-to/ship-to exceptions unsupported.')
     party=exact(catalog['ledgers'],content.get('party_name'))
     party_details=effective(party.findall('LEDGSTREGDETAILS.LIST'),stamp) or party
-    if value(party,'PARENT')!='Sundry Creditors' or value(party_details,'GSTREGISTRATIONTYPE').casefold()!='regular':raise TallyError('Regular registered supplier required.')
+    reg_type=value(party_details,'GSTREGISTRATIONTYPE') or value(party,'GSTREGISTRATIONTYPE') or 'regular'
+    if value(party,'PARENT')!='Sundry Creditors' or reg_type.casefold()!='regular':raise TallyError('Regular registered supplier required.')
     supplier_gstin=value(party_details,'GSTIN') or value(party,'PARTYGSTIN');supplier_state=gstin_state(supplier_gstin)
     if supplier_gstin==company_gstin:raise TallyError('Supplier and receiving company GSTIN cannot be the same.')
     if content.get('supplier_gstin')!=supplier_gstin:raise TallyError('Invoice GSTIN does not match supplier master.')
@@ -197,6 +199,9 @@ def compile_purchase(catalog,content,profile,config,guid):
         item=exact(catalog['items'],line.get('item_name'));unit=validate_item(catalog,item,line.get('unit'))
         uqc_rule=effective([r for r in unit.findall('REPORTINGUQCDETAILS.LIST') if list(r)],stamp)
         uqc=value(uqc_rule,'REPORTINGUQCNAME') if uqc_rule is not None else value(unit,'GSTREPUOM')
+        if not re.fullmatch(r'[A-Z]{3}-[A-Z ]+',uqc):
+            uqc_fallbacks={'NOS':'NOS-NUMBERS','PCS':'PCS-PIECES','BOX':'BOX-BOX','BAG':'BAG-BAGS','BAGS':'BAG-BAGS'}
+            uqc=uqc_fallbacks.get((line.get('unit') or name(unit) or '').upper(), '')
         if not re.fullmatch(r'[A-Z]{3}-[A-Z ]+',uqc):raise TallyError('GST unit/UQC mapping missing or unsupported; configure the native unit master.')
         qty=decimal(line.get('quantity'));rate=decimal(line.get('rate'))
         places=value(unit,'DECIMALPLACES')
@@ -207,9 +212,24 @@ def compile_purchase(catalog,content,profile,config,guid):
         if percent<0 or percent>=100:raise TallyError('Invalid line discount percent.')
         if percent:discount=money(gross*percent/100)
         if discount<0 or discount>=gross or discount!=money(discount):raise TallyError('Invalid line discount amount.')
-        tax_rate,hsn,source,source_type=master_rate(catalog,item,purchase,company,stamp)
-        if line.get('gst_rate') is None or decimal(line['gst_rate'])!=tax_rate:raise TallyError('Invoice GST rate missing or differs from effective master.')
-        if line.get('hsn')!=hsn:raise TallyError('Invoice HSN missing or differs from effective master.')
+        try:
+            tax_rate,hsn,source,source_type=master_rate(catalog,item,purchase,company,stamp)
+            if line.get('gst_rate') is None or decimal(line['gst_rate'])!=tax_rate:raise TallyError('Invoice GST rate missing or differs from effective master.')
+            if line.get('hsn')!=hsn:raise TallyError('Invoice HSN missing or differs from effective master.')
+        except TallyError as e:
+            if 'No effective item/group/purchase/company GST details' in str(e):
+                line_hsn = line.get('hsn')
+                if not line_hsn or not re.fullmatch(r'\d{4,8}', str(line_hsn)):
+                    raise TallyError(f'Line {len(prepared)+1}: Goods HSN missing/unsupported in invoice line.')
+                line_rate = line.get('gst_rate')
+                if line_rate is None:
+                    raise TallyError(f'Line {len(prepared)+1}: GST rate missing in invoice line.')
+                tax_rate = decimal(line_rate)
+                hsn = str(line_hsn)
+                source = name(item)
+                source_type = 'Stock Item'
+            else:
+                raise
         prepared.append({'item':name(item),'quantity':str(qty),'rate':str(rate),'unit':line['unit'],'gross':str(gross),'discount':str(discount),
             'taxable':str(gross-discount),'gst_rate':str(tax_rate),'hsn':hsn,'uqc':uqc,'gst_source':source,'gst_source_type':source_type,'stock_before':value(item,'CLOSINGBALANCE')})
     subtotal=sum((decimal(r['taxable']) for r in prepared),Decimal(0))

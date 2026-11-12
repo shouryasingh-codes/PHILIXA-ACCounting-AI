@@ -140,7 +140,7 @@ async def context(db,principal,row,force=False):
             data={},status='queued',attempts=0,updated_at=sync.now()).on_conflict_do_nothing())
         await db.commit();cache=await db.get(PurchaseHistoryCache,key)
         await enqueue(cache)
-    elif force or (cache.status=='ready' and (not fresh(cache.collected_at) or not fresh(snapshot.collected_at))):
+    elif force or (cache.status=='error' and (cache.updated_at is None or sync.now()-cache.updated_at>timedelta(seconds=10))) or (cache.status=='ready' and (not fresh(cache.collected_at) or not fresh(snapshot.collected_at))):
         if cache.status!='processing':
             cache.status='queued';cache.error=None;cache.attempts=0;cache.updated_at=sync.now()
             cache.draft_id=row.id;cache.user_id=principal.user_id

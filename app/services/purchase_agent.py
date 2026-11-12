@@ -299,8 +299,9 @@ async def state(db,principal,draft_id,prefix=''):
     response={'response':'\n'.join(message),'draft_id':row.id,'gst_purchase_draft':{'id':row.id},
         'purchase_assistant':{'draft_id':row.id,'revision':revision,'field':identity['field'] if identity else 'message','choices':identity['choices'] if identity else []},
         'proposal':proposal,'issues':issues,'suggestions':context.get('suggestions',[]),'evidence_version':proposal['evidence_version'],
-            'purchase_context':{**context,'native_history_status':context.get('history_status',context.get('status')),
-            'native_history_reason':context.get('reason')},'purchase_details':master_notes}
+        'purchase_situation':(row.extraction_metadata or {}).get('purchase_situation',{}),
+        'purchase_context':{**context,'native_history_status':context.get('history_status',context.get('status')),
+        'native_history_reason':context.get('reason')},'purchase_details':master_notes}
     selection_masters=[]
     for label in identity['choices'] if identity else []:
         try:

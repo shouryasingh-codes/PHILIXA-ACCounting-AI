@@ -52,6 +52,15 @@ def validate_master_identity(name_str: str, max_len: int = 120) -> str:
     return cleaned
 
 
+UQC_MAP = {
+    'nos': ('NOS', 'NOS-NUMBERS', 'Numbers'),
+    'pcs': ('PCS', 'PCS-PIECES', 'Pieces'),
+    'box': ('BOX', 'BOX-BOX', 'Boxes'),
+    'bags': ('BAG', 'BAG-BAGS', 'Bags'),
+    'bag': ('BAG', 'BAG-BAGS', 'Bags'),
+}
+
+
 def build_unit_message(parent_req: ET.Element, unit_name: str) -> ET.Element:
     """Append a simple unit creation message to REQUESTDATA."""
     u_clean = validate_master_identity(unit_name, 50)
@@ -60,6 +69,12 @@ def build_unit_message(parent_req: ET.Element, unit_name: str) -> ET.Element:
     tag(unit_el, 'NAME', u_clean)
     tag(unit_el, 'ISSIMPLEUNIT', 'Yes')
     tag(unit_el, 'DECIMALPLACES', '0')
+    gst_uom, uqc_name, orig = UQC_MAP.get(u_clean.lower(), ('OTH', 'OTH-OTHERS', u_clean))
+    tag(unit_el, 'ORIGINALNAME', orig)
+    tag(unit_el, 'GSTREPUOM', gst_uom)
+    uqc_list = tag(unit_el, 'REPORTINGUQCDETAILS.LIST')
+    tag(uqc_list, 'APPLICABLEFROM', '20200401')
+    tag(uqc_list, 'REPORTINGUQCNAME', uqc_name)
     return msg
 
 

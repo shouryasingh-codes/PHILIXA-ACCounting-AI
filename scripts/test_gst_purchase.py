@@ -167,6 +167,20 @@ class Durable(unittest.IsolatedAsyncioTestCase):
         await service.save_profile(self.db,self.principal,self.company.id,service.TaxProfileSave(revision=1,**profile()))
         with self.assertRaises(TallyError):await service.ensure_approved_profile(self.db,action)
 
+    async def test_auto_default_profile_for_unambiguous_gst_ledgers(self):
+        cat=catalog()
+        # Fixture includes both SGST and UTGST (both map to SGST head), so auto-setup refuses to guess.
+        self.assertFalse(await service.maybe_create_default_profile(self.db,self.company.id,cat))
+        clean=copy.deepcopy(cat)
+        clean['ledgers']=[l for l in clean['ledgers'] if l.get('NAME')!='Input UTGST']
+        self.assertTrue(await service.maybe_create_default_profile(self.db,self.company.id,clean))
+        await self.db.commit()
+        view=await service.profile_view(self.db,self.principal,self.company.id)
+        self.assertEqual(view['revision'],1)
+        self.assertEqual(view['profile']['ledgers'],{'CGST':'Input CGST','SGST':'Input SGST','IGST':'Input IGST'})
+        self.assertEqual(view['profile']['rounding_ledger'],'Round Off')
+        self.assertFalse(await service.maybe_create_default_profile(self.db,self.company.id,clean))
+
 class BridgeV8(Durable):
     async def asyncSetUp(self):
         await super().asyncSetUp()

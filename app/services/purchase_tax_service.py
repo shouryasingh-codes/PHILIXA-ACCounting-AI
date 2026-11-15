@@ -20,21 +20,39 @@ class TaxProfileSave(BaseModel):
     ledgers:dict[str,str]
     rounding_ledger:str|None=Field(default=None,max_length=200)
 
-async def profile_view(db,principal,company_id):
-    company=await drafts.company_for(db,principal,company_id)
-    snapshot=await sync.saved_snapshot(db,company)
-    catalog=deserialize_catalog(snapshot.catalog) if snapshot else None
-    row=await db.get(PurchaseTaxProfile,company_id,populate_existing=True)
+def gst_candidates(catalog):
+    """Collect exact Duties & Taxes GST head ledgers and non-taxable rounding ledgers."""
     candidates={h:[] for h in gst.HEADS}
     if catalog:
         for ledger in catalog['ledgers']:
             if value(ledger,'PARENT')=='Duties & Taxes' and value(ledger,'TAXTYPE').casefold()=='gst' and gst.tax_head(value(ledger,'GSTDUTYHEAD')) in candidates:
                 candidates[gst.tax_head(value(ledger,'GSTDUTYHEAD'))].append(name(ledger))
     defaults={h:labels[0] for h,labels in candidates.items() if len(labels)==1}
+    rounding_candidates=[name(r) for r in catalog['ledgers'] if value(r,'PARENT') in ('Indirect Expenses','Indirect Incomes') and value(r,'GSTAPPLICABLE').casefold() in ('no','not applicable','notapplicable')] if catalog else []
+    return candidates,defaults,rounding_candidates
+
+async def profile_view(db,principal,company_id):
+    company=await drafts.company_for(db,principal,company_id)
+    snapshot=await sync.saved_snapshot(db,company)
+    catalog=deserialize_catalog(snapshot.catalog) if snapshot else None
+    row=await db.get(PurchaseTaxProfile,company_id,populate_existing=True)
+    candidates,defaults,rounding_candidates=gst_candidates(catalog)
     return {'revision':row.revision if row else 0,'profile':row.data if row else {'ledgers':defaults,'rounding_ledger':None},
-        'candidates':candidates,'rounding_candidates':[name(r) for r in catalog['ledgers'] if value(r,'PARENT') in ('Indirect Expenses','Indirect Incomes') and value(r,'GSTAPPLICABLE').casefold() in ('no','not applicable','notapplicable')] if catalog else [],
+        'candidates':candidates,'rounding_candidates':rounding_candidates,
         'gst_enabled':bool(catalog and catalog.get('companies') and value(catalog['companies'][0],'ISGSTON').casefold()=='yes'),
         'posting_available':acceptance_enabled(),'tax_masters_available':bool(catalog and catalog.get('companies'))}
+
+async def maybe_create_default_profile(db,company_id,catalog):
+    """Auto-save unambiguous company GST ledgers during connection setup so drafts work immediately."""
+    row=await db.get(PurchaseTaxProfile,company_id,populate_existing=True)
+    if row is not None:return False
+    candidates,defaults,rounding_candidates=gst_candidates(catalog)
+    if any(len(candidates[h])>1 for h in ('CGST','SGST','IGST')):return False
+    has_intra='CGST' in defaults and ('SGST' in defaults or 'UTGST' in defaults)
+    if not ('IGST' in defaults or has_intra):return False
+    rounding=rounding_candidates[0] if len(rounding_candidates)==1 else None
+    db.add(PurchaseTaxProfile(company_id=company_id,data={'ledgers':defaults,'rounding_ledger':rounding},revision=1))
+    return True
 
 async def save_profile(db,principal,company_id,request):
     company=await drafts.company_for(db,principal,company_id)

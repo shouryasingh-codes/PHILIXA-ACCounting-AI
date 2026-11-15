@@ -30,6 +30,8 @@ async def preview_multi_purchase(db,principal,draft,content):
         snapshot=await sync.saved_snapshot(db,company)
         if not snapshot:raise TallyError('Complete saved masters unavailable; sync company first.')
         catalog=deserialize_catalog(snapshot.catalog)
+        if not catalog.get('non_gst'):
+            raise TallyError(f'{company.name} GST-enabled company hai — yahan Tax treatment mein "GST · domestic regular goods" chunein. Bina-GST entry sirf non-GST company mein save hoti hai.')
         if content.godown and content.godown!=cfg.godown:raise TallyError('Configured godown use karein.')
         parties=match(catalog['ledgers'],content.party_name)
         if len(parties)!=1:raise TallyError('Supplier missing/ambiguous; exact Tally supplier select karein.')

@@ -104,6 +104,14 @@ async def configure(request:ConnectionRequest,principal:CurrentPrincipal,db:Asyn
         cfg.version+=1
     else:
         db.add(candidate)
+    gst_ledgers_configured=False
+    if not catalog['non_gst'] and request.test_company:
+        from app.services.tally_stock import resolve_scope
+        from app.services.business_command_service import ParsedCommand
+        from app.services.purchase_tax_service import maybe_create_default_profile
+        matches=[r for r in await resolve_scope(db,principal,ParsedCommand(intent='stock_read',company_query=request.company)) if r.name==request.company]
+        if len(matches)==1:
+            gst_ledgers_configured=await maybe_create_default_profile(db,matches[0].id,catalog)
     await db.commit()
     configured=cfg or candidate
     redis=await get_redis_client()
@@ -116,7 +124,8 @@ async def configure(request:ConnectionRequest,principal:CurrentPrincipal,db:Asyn
         pass  # Connection is durably saved; this optional model hint cache is not an execution gate.
     finally:
         await redis.aclose()
-    return {'response':'Tally test-company configuration saved. Stock command se live read check karein.'}
+    msg='Tally test-company configuration aur GST ledgers save ho gaye.' if gst_ledgers_configured else 'Tally test-company configuration saved. Stock command se live read check karein.'
+    return {'response':msg,'gst_ledgers_configured':gst_ledgers_configured}
 
 
 @router.post('/actions/{token}/reconcile')

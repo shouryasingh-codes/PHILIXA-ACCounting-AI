@@ -71,6 +71,14 @@ async def state(db,principal,draft_id):
         if result.get('proposal'):result['proposal']['can_prepare_preview']=False
         result['purchase_situation']=situation
         return result
+    if result.get('proposal',{}).get('company_gst_enabled') and situation.get('rate_basis',{}).get('value')=='no_gst_charged':
+        company_label=result['proposal'].get('company') or 'Selected company'
+        msg=f'{company_label} Tally mein GST-enabled company hai, isliye bina-GST ("No GST charged") entry yahan save nahi hoti. GST bill details ke saath entry karein, ya bina-GST test ke liye non-GST Tally company connect karein.'
+        result['response']=msg
+        result['issues']=[*result.get('issues',[]),{'field':'rate_basis','kind':'blocked','message':msg}]
+        result['proposal']['can_prepare_preview']=False
+        result['purchase_situation']=situation
+        return result
     if bill=='pending':
         if goods!='received':
             result['response']='Bill pending hai. Maal mil chuka hai ya abhi aana hai? Abhi entry nahi hui.'

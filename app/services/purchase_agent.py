@@ -153,8 +153,22 @@ async def state(db,principal,draft_id,prefix=''):
             if key!='lines' and val is not None:
                 provenance.setdefault(key,dict(value=val,status='master' if key=='supplier_gstin' else 'unresolved',
                     source_type='tally_master' if key=='supplier_gstin' else 'saved_draft',observed_at=row.updated_at.isoformat(),draft_revision=revision))
+        company_gst_enabled=not catalog.get('non_gst',True)
+        company_state_code=None
+        if company_gst_enabled:
+            from app.services import tally_gst_purchase as gst
+            from app.services.tally_connector import name as xml_name
+            try:
+                units=gst.gst_units(catalog)
+                native_comp=next((r for r in catalog.get('companies',[]) if xml_name(r)==company.name),None)
+                stamp=content.get('entry_date') or datetime.now(ZoneInfo('Asia/Kolkata')).date().isoformat()
+                if native_comp is not None or units:
+                    company_state_code=gst.gstin_state(gst.registration(units[0] if units else native_comp,stamp))
+            except TallyError:
+                company_state_code=None
         return {'calls':step(s,'prepare_proposal',{'revision':revision,'content':content}),
             'proposal':dict(company=company.name,company_id=company.id,content=content,revision=revision,
+                company_gst_enabled=company_gst_enabled,company_state_code=company_state_code,
                 totals={**totals,'source':'calculated','invoice_total':content.get('invoice_total')},provenance=provenance,
                 evidence_version=digest([revision,content,evidence.get('evidence_version'),snapshot_generation]),
                 can_prepare_preview=not s['issues'])}

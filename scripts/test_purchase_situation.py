@@ -100,5 +100,13 @@ class Routing(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result['proposal']['can_prepare_preview'])
         self.assertTrue(any(i['kind']=='blocked' for i in result['issues']))
 
+    async def test_gst_company_blocks_no_gst_charged_dead_end(self):
+        row=await self.row()
+        await intake.capture(self.db,self.principal,row,'Supplier ne GST charge nahi kiya. Maal aa gaya. Bill baad mein.')
+        with patch('app.services.purchase_agent.state',new=AsyncMock(return_value={'issues':[],'proposal':{'can_prepare_preview':True,'company_gst_enabled':True}})):
+            result=await intake.state(self.db,self.principal,row.id)
+        self.assertFalse(result['proposal']['can_prepare_preview'])
+        self.assertTrue(any(i['kind']=='blocked' and 'GST' in i.get('message','') for i in result['issues']))
+
 
 if __name__=='__main__':unittest.main()

@@ -454,4 +454,15 @@ body { margin: 0; background: #fff; }
 .business-stock-note { margin:0;padding:10px 14px;font-size:12.5px;color:#637369; }
 @media(max-width:600px){ .business-stock-head,.business-stock-table td,.business-stock-table th{padding-left:11px;padding-right:11px;} }
 
+.purchase-date-row { display:flex; gap:6px; align-items:center; width:100%; }
+.purchase-date-row input { flex:1; min-width:0; }
+.purchase-today-btn { padding:6px 10px !important; font-size:12px !important; margin:0 !important; white-space:nowrap; border-radius:7px !important; }
+.purchase-direct-confirm .purchase-field-half { flex:1 1 calc(50% - 4px); min-width:170px; }
+.purchase-line-edit { flex-basis:100%; width:100%; background:#f8faf8; border:1px solid #d7e2da; border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+.purchase-line-edit-title { font-size:13px; font-weight:600; color:#1d3b2b; }
+.purchase-line-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.purchase-line-grid label { margin:0; font-size:12px; color:#4f6055; display:flex; flex-direction:column; gap:4px; }
+@media(max-width:480px){ .purchase-line-grid { grid-template-columns:1fr; } }
+
+
 

@@ -24,6 +24,11 @@
     top.lastChild.textContent=' '+(stateLabels[data.connection_state] || (data.online?'Connector online':'Connector offline'));
     top.title='Connector connection and live Tally availability are checked separately.';
   }
+  function syncSetupButtonLabel() {
+    const setupButton=document.getElementById('tallyPurchaseSetup');
+    if(!setupButton||setupButton.disabled)return;
+    setupButton.textContent=saved?.test_company&&saved.company?'✓ Purchase entry setup ('+saved.company+')':'Purchase entry setup (1 step)';
+  }
   function paintStatus(data) {
     showConnectionBadge(data);
     const messages={setup_needed:'Complete installation and pairing once.',connector_offline:'Connector offline. Open Windows Start → Philixa Tally Connector. If missing, download below.',
@@ -45,6 +50,7 @@
     if(storeUrl)download.textContent='Get Tally Connector from Microsoft Store';
     download.dataset.paired=String(data.paired);download.dataset.url=storeUrl || data.installer_url || '';
     document.getElementById('tallyPurchaseSetup').hidden=!data.can_configure||!data.companies?.length;
+    syncSetupButtonLabel();
     document.getElementById('tallyVerifySetup').hidden=!data.paired || !data.online;
   }
   async function verifySetup(id=generation) {
@@ -142,7 +148,16 @@
     const split=value=>value.split(',').map(x=>x.trim()).filter(Boolean);
     const companies=[...companyList.querySelectorAll('input[name=company]:checked')].map(x=>({...discovered[Number(x.value)],aliases:split(companyList.querySelector(`[data-aliases="${x.value}"]`).value),member_ids:[...companyList.querySelectorAll(`[data-member-company="${x.value}"]:checked`)].map(m=>m.value)}));
     const result=await api('/companies','PUT',{mode:readMode(),companies});if(id!==generation)return;
-    await loadReadStatus(id);readStatus.textContent=companies.length?'Companies approved. Live stock access check ho raha hai…':result.response;access.hidden=true;if(companies.length)await verifySetup(id);
+    await loadReadStatus(id);readStatus.textContent=companies.length?'Companies approved. Live stock access check ho raha hai…':result.response;access.hidden=true;
+    if(companies.length){
+      await verifySetup(id);
+      if(id!==generation)return;
+      const cfgData=await api('').catch(()=>null);
+      if(id===generation&&cfgData&&!cfgData.configured){
+        document.getElementById('tallyAdvanced').open=true;
+        await preparePurchaseSetup(companies.length===1?companies[0].name:null);
+      }
+    }
   });});
   async function api(path,method='GET',body) {
     const response=await window.fetchWithAuth('/api/v1/integrations/tally'+path,{
@@ -156,6 +171,12 @@
     values.forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=value||'Select…';control.append(option);});
     if(values.includes(preferred)) control.value=preferred;
   }
+  function pickDefaultLedger(values,priorValue,standardNames) {
+    if(priorValue&&values.includes(priorValue))return priorValue;
+    if(values.length===1)return values[0];
+    const matches=values.filter(v=>standardNames.includes(v.trim().toLowerCase()));
+    return matches.length===1?matches[0]:'';
+  }
   async function loadMasters() {
     const id=++generation;
     form.querySelector('button').disabled=true;
@@ -165,12 +186,15 @@
       if(!company) throw new Error('Tally mein test company load karein.');
       const data=await api('/test','POST',{company}); if(id!==generation) return;
       const prior=saved?.company===company?saved:null;
+      const defaultPurchase=pickDefaultLedger(data.purchase_ledgers,prior?.purchase_ledger,['purchases','purchase','purchase a/c','purchase account','purchase accounts']);
+      const defaultSales=pickDefaultLedger(data.sales_ledgers,prior?.sales_ledger,['sales','sale','sales a/c','sales account','sales accounts']);
       options('godown',data.godowns,prior?.godown);
-      options('purchase_ledger',data.purchase_ledgers.length>1&&!data.purchase_ledgers.includes(prior?.purchase_ledger)?['',...data.purchase_ledgers]:data.purchase_ledgers,prior?.purchase_ledger);
-      options('sales_ledger',data.sales_ledgers,prior?.sales_ledger);
+      options('purchase_ledger',data.purchase_ledgers.length>1&&!defaultPurchase?['',...data.purchase_ledgers]:data.purchase_ledgers,defaultPurchase||undefined);
+      options('sales_ledger',data.sales_ledgers.length>1&&!defaultSales?['',...data.sales_ledgers]:data.sales_ledgers,defaultSales||undefined);
       const ready=(data.non_gst || data.gst_configuration_supported) && data.godowns.length===1 && data.purchase_ledgers.length && data.sales_ledgers.length;
       form.querySelector('button').disabled=!ready;
-      status.textContent=ready ? 'Connection reachable. Company aur ledger mappings check karke save karein.' : 'Single-godown test company aur supported purchase/sales masters chahiye.';
+      const autoFilled=ready&&defaultPurchase&&defaultSales&&data.godowns.length===1;
+      status.textContent=ready ? (autoFilled ? 'Settings auto-detect ho gayi hain — bas check karke Save connection dabayein.' : 'Connection reachable. Company aur ledger mappings check karke save karein.') : 'Single-godown test company aur supported purchase/sales masters chahiye.';
     } catch(error) {if(id===generation) status.textContent=error.message;}
   }
   window.openBusinessTally=async()=>{
@@ -179,15 +203,15 @@
     pair.hidden=true;
     installStep.hidden=true;access.hidden=true;
     ['tallyDiscover','tallyRevoke','tallyDownload','tallyLocalLabel','tallyChangeComputer','tallyVerifySetup'].forEach(key=>document.getElementById(key).hidden=true);
-    try { await loadReadStatus(id); }
-    catch(error) {if(id===generation)readStatus.textContent=error.message;}
-    if(id!==generation)return;
     try {
       const data=await api('');if(id!==generation) return;
       saved=data.connection;probe.disabled=!data.can_configure;
       status.textContent=data.configured ? `Configured: ${saved.company}. Connection check se reachability verify karein.` : 'Abhi Tally configure nahi hua.';
       if(!data.can_configure) status.textContent+=' Setup ke liye workspace owner/admin se kahen.';
     }catch(error){if(id===generation) status.textContent=error.message;}
+    if(id!==generation)return;
+    try { await loadReadStatus(id); }
+    catch(error) {if(id===generation)readStatus.textContent=error.message;}
   };
   async function preparePurchaseSetup(preferredCompany){
     const id=++generation;probe.disabled=true;form.hidden=true;status.textContent='Tally connection check ho raha hai…';
@@ -195,8 +219,11 @@
       const data=await api('/test','POST',{});if(id!==generation)return;
       if(preferredCompany&&!data.companies.includes(preferredCompany))throw new Error('Company access badal gaya. Approved company select karein.');
       const preferred=preferredCompany||(data.companies.includes(saved?.company)?saved.company:null);
-      options('company',data.companies,preferred);form.elements.test_company.checked=false;form.hidden=false;
-      if(!preferred&&data.companies.length!==1){options('company',['',...data.companies]);status.textContent='Purchase ke liye approved practice company select karein.';return;}
+      const resolved=preferred||(data.companies.length===1?data.companies[0]:null);
+      options('company',data.companies,preferred);
+      form.elements.test_company.checked=Boolean(saved&&resolved&&saved.company===resolved&&saved.test_company);
+      form.hidden=false;
+      if(!resolved&&data.companies.length!==1){options('company',['',...data.companies]);status.textContent='Purchase ke liye approved practice company select karein.';return;}
       await loadMasters();
     }catch(error){if(id===generation)status.textContent=error.message;}
     finally{if(dialog.open)probe.disabled=false;}
@@ -223,7 +250,7 @@
       await preparePurchaseSetup(typeof companyName==='string'?companyName:null);
     }catch(error){status.textContent='Purchase setup load nahi hua: '+error.message;}
     finally{
-      purchaseSetupBusy=false;setupButton.disabled=false;setupButton.textContent='Purchase entry setup';
+      purchaseSetupBusy=false;setupButton.disabled=false;syncSetupButtonLabel();
     }
   };
   document.getElementById('tallyPurchaseSetup').addEventListener('click',()=>window.openBusinessPurchaseSetup());
@@ -234,6 +261,7 @@
       const payload=Object.fromEntries(new FormData(form));payload.test_company=form.elements.test_company.checked;
       const result=await api('','PUT',payload);if(id!==generation)return;
       saved=payload;status.textContent=result.response;button.textContent='Connection saved ✓';
+      syncSetupButtonLabel();
       top.lastChild.textContent=' Tally configured';
     }catch(error){if(id===generation)status.textContent=error.message;}
     finally{if(id===generation){button.disabled=false;status.scrollIntoView({block:'nearest'});}}
@@ -712,7 +740,14 @@
       || (!facts.rate_basis&&!data.goods_receipt?.rate_basis)
       || (data.proposal?.content?.lines||[]).some((line,index)=>line.rate==null&&!(data.suggestions||[]).some(s=>s.field===`${index}:rate`));
 
-    const compactFacts=singleCard&&data.status==='needs_input'&&data.proposal?.content?.party_name&&!data.receipt_ready&&!hasIdentityBlockers&&hasMissingFacts;
+    function todayIstIso(){
+      const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+      const part=t=>parts.find(p=>p.type===t).value;
+      return `${part('year')}-${part('month')}-${part('day')}`;
+    }
+    const gstCompany=!!data.proposal?.company_gst_enabled;
+    const hasBlockedIssues=(data.issues||[]).some(i=>i.kind==='blocked');
+    const compactFacts=singleCard&&data.status==='needs_input'&&!hasBlockedIssues&&data.proposal?.content?.party_name&&!data.receipt_ready&&!hasIdentityBlockers&&hasMissingFacts;
     if(singleCard&&data.status==='needs_input'){
       if(data.goods_receipt){const route=document.createElement('p');route.textContent='Goods received · bill pending';tools.append(route);}
       if(!compactFacts&&!hasIdentityBlockers)(data.situation_choices||[]).forEach(choice=>toolButton(tools,choice,()=>submit(choice)));
@@ -728,14 +763,30 @@
         [['','Chunein…'],...options].forEach(([value,text])=>{const option=document.createElement('option');option.value=value;option.textContent=text;input.append(option);});
         label.append(input);form.append(label);controls.push(()=>input.value);return input;
       }
-      if(!facts.bill_status&&!data.proposal?.content?.invoice_number)selectFact('Bill',[['Bill baad mein','Abhi nahi mila'],['Bill mil gaya','Mil gaya hai']]);
+      let billSelect=null, invInline=null;
+      if(!facts.bill_status&&!data.proposal?.content?.invoice_number){
+        billSelect=selectFact('Bill',[['Bill baad mein','Abhi nahi mila'],['Bill mil gaya','Mil gaya hai']]);
+        const invLabel=document.createElement('label');invLabel.textContent='Bill / Invoice number (agar saamne hai)';invLabel.hidden=true;
+        invInline=document.createElement('input');invInline.type='text';invInline.maxLength=100;invInline.placeholder='e.g. INV-2026-001 (optional)';
+        invLabel.append(invInline);form.append(invLabel);
+        billSelect.addEventListener('change',()=>{invLabel.hidden=billSelect.value!=='Bill mil gaya';if(invLabel.hidden)invInline.value='';});
+        controls.push(()=>billSelect.value==='Bill mil gaya'&&invInline.value.trim()?'Invoice number: '+invInline.value.trim():'');
+      }
       if(!facts.goods_status&&!data.goods_receipt?.goods_status)selectFact('Maal',[['Maal aa gaya','Mil chuka hai'],['Maal abhi nahi aaya','Abhi nahi mila']]);
       if(!facts.received_on&&!data.goods_receipt?.received_on){
         const label=document.createElement('label');label.textContent='Maal milne ki date (mil chuka ho toh)';
-        const date=document.createElement('input');date.type='date';label.append(date);form.append(label);
+        const dateWrap=document.createElement('div');dateWrap.className='purchase-date-row';
+        const date=document.createElement('input');date.type='date';
+        const todayBtn=document.createElement('button');todayBtn.type='button';todayBtn.className='purchase-today-btn';todayBtn.textContent='Aaj ki date';
+        todayBtn.addEventListener('click',()=>{date.value=todayIstIso();});
+        dateWrap.append(date,todayBtn);label.append(dateWrap);form.append(label);
         controls.push(()=>date.value?'Received date: '+date.value:'');
       }
-      if(!facts.rate_basis&&!data.goods_receipt?.rate_basis)selectFact('Dikhaye gaye rate mein GST',[['GST alag lagega','GST alag hai'],['GST included','GST included hai'],['No GST charged','Supplier ne GST charge nahi kiya']]);
+      if(!facts.rate_basis&&!data.goods_receipt?.rate_basis){
+        const gstOpts=gstCompany?[['GST alag lagega','GST alag hai'],['GST included','GST included hai']]:[['GST alag lagega','GST alag hai'],['GST included','GST included hai'],['No GST charged','Supplier ne GST charge nahi kiya']];
+        selectFact('Dikhaye gaye rate mein GST',gstOpts);
+        if(gstCompany){const hint=document.createElement('small');hint.className='business-hint';hint.textContent='GST-enabled company: yahan GST bill details enter karein.';form.append(hint);}
+      }
       (data.proposal.content.lines||[]).forEach((line,index)=>{
         if(line.rate!=null||(data.suggestions||[]).some(s=>s.field===`${index}:rate`))return;
         const label=document.createElement('label');label.textContent=(line.item_name||'Item')+' ka actual rate';
@@ -752,7 +803,126 @@
       });
       tools.append(form);
     }
-    if(singleCard&&data.status==='needs_input'&&!compactFacts&&!hasIdentityBlockers){
+    const directConfirmEligible=singleCard&&data.status==='needs_input'&&!compactFacts&&!hasIdentityBlockers&&!data.receipt_ready&&!hasBlockedIssues&&facts.goods_status?.value!=='not_received'&&facts.bill_status?.value!=='pending'&&!data.details_unknown&&data.proposal?.content&&(data.draft_id||data.gst_purchase_draft?.id);
+    if(directConfirmEligible){
+      const content=data.proposal.content;
+      const draftId=data.draft_id||data.gst_purchase_draft?.id;
+      let currentRevision=data.proposal.revision??data.purchase_assistant?.revision??0;
+      const isGst=gstCompany||content.tax_treatment==='regular_domestic_goods';
+      const utStates=['04','25','26','31','35','38'];
+      const form=document.createElement('form');form.className='purchase-inline-reply purchase-direct-confirm';
+      const heading=document.createElement('strong');heading.textContent=isGst?'Bill aur GST details check karke seedha Preview banayein':'Bill details confirm karke seedha Preview banayein';form.append(heading);
+      function makeField(labelText,type,value,opts={}){
+        const label=document.createElement('label');label.textContent=labelText;if(opts.half)label.className='purchase-field-half';
+        const input=document.createElement('input');input.type=type;input.value=value??'';
+        if(opts.required)input.required=true;if(opts.placeholder)input.placeholder=opts.placeholder;
+        if(opts.maxLength)input.maxLength=opts.maxLength;if(opts.step)input.step=opts.step;if(opts.min!==undefined)input.min=opts.min;
+        label.append(input);form.append(label);return input;
+      }
+      const invInput=makeField('Invoice / Bill number','text',content.invoice_number||'',{required:true,maxLength:100,placeholder:'e.g. INV-2026-001',half:true});
+      const dateLabel=document.createElement('label');dateLabel.className='purchase-field-half';dateLabel.textContent='Bill date';
+      const dateWrap=document.createElement('div');dateWrap.className='purchase-date-row';
+      const dateInput=document.createElement('input');dateInput.type='date';dateInput.required=true;dateInput.value=content.entry_date||facts.received_on?.value||'';
+      const todayBtn=document.createElement('button');todayBtn.type='button';todayBtn.className='purchase-today-btn';todayBtn.textContent='Aaj';
+      todayBtn.addEventListener('click',()=>{dateInput.value=todayIstIso();});
+      dateWrap.append(dateInput,todayBtn);dateLabel.append(dateWrap);form.append(dateLabel);
+      let gstinInput=null, posInput=null, totalInput=null, lineInputs=[], taxDisplay=null, userEditedTotal=false;
+      const round2=n=>Math.round((Number(n)+Number.EPSILON)*100)/100;
+      if(isGst){
+        gstinInput=makeField('Supplier GSTIN','text',content.supplier_gstin||'',{required:true,maxLength:15,placeholder:'15-digit GSTIN',half:true});
+        posInput=makeField('Place of supply (State code)','text',content.place_of_supply||data.proposal.company_state_code||'',{required:true,maxLength:2,placeholder:'e.g. 08',half:true});
+        lineInputs=(content.lines||[]).map((line,idx)=>{
+          const qty=Number(line.quantity||0);
+          const rateVal=line.rate??'';
+          const gstRateVal=line.gst_rate??'';
+          const taxableVal=line.taxable_amount??(line.rate!=null&&qty?round2(qty*Number(line.rate)).toFixed(2):'');
+          const box=document.createElement('div');box.className='purchase-line-edit';
+          const title=document.createElement('div');title.className='purchase-line-edit-title';title.textContent=`${line.item_name||'Item '+(idx+1)} (${line.quantity||''} ${line.unit||''})`;box.append(title);
+          const sub=document.createElement('div');sub.className='purchase-line-grid';
+          function cell(lbl,val,type,opts={}){const w=document.createElement('label');w.textContent=lbl;const inp=document.createElement('input');inp.type=type;inp.value=val??'';if(opts.required)inp.required=true;if(opts.step)inp.step=opts.step;if(opts.min!==undefined)inp.min=opts.min;if(opts.maxLength)inp.maxLength=opts.maxLength;w.append(inp);sub.append(w);return inp;}
+          const rateInp=cell('Rate ₹',rateVal,'number',{required:true,step:'0.01',min:'0.01'});
+          const taxableInp=cell('Taxable ₹',taxableVal,'number',{required:true,step:'0.01',min:'0.01'});
+          const gstInp=cell('GST %',gstRateVal,'number',{required:true,step:'0.01',min:'0'});
+          const hsnInp=cell('HSN',line.hsn||'','text',{required:true,maxLength:8});
+          box.append(sub);form.append(box);
+          return {line,qty,rateInp,taxableInp,gstInp,hsnInp};
+        });
+        taxDisplay=document.createElement('p');taxDisplay.className='business-hint';form.append(taxDisplay);
+        totalInput=makeField('Bill Grand Total ₹ (tax ke baad)','number',content.invoice_total||'',{required:true,step:'0.01',min:'0.01'});
+        totalInput.addEventListener('input',()=>{userEditedTotal=true;});
+        const computeTaxes=(forceTotal=false)=>{
+          const supState=gstinInput.value.trim().slice(0,2).toUpperCase();
+          const posState=posInput.value.trim();
+          const inter=Boolean(supState&&posState&&supState!==posState);
+          const sHead=utStates.includes(posState)?'UTGST':'SGST';
+          const taxes={};let taxableSum=0;
+          lineInputs.forEach(item=>{
+            const tAmt=Number(item.taxableInp.value||0), gRate=Number(item.gstInp.value||0);
+            taxableSum+=tAmt;
+            if(inter){taxes.IGST=round2((taxes.IGST||0)+round2(tAmt*gRate/100));}
+            else{const half=round2(tAmt*gRate/200);taxes.CGST=round2((taxes.CGST||0)+half);taxes[sHead]=round2((taxes[sHead]||0)+half);}
+          });
+          const taxSum=Object.values(taxes).reduce((a,b)=>round2(a+b),0);
+          const grand=round2(taxableSum+taxSum+Number(content.round_off||0));
+          taxDisplay.textContent='Estimated GST: '+Object.entries(taxes).map(([k,v])=>`${k} ₹${v.toFixed(2)}`).join(' · ')+' (original bill se match karein)';
+          if(!userEditedTotal&&(forceTotal||!totalInput.value))totalInput.value=grand>0?grand.toFixed(2):'';
+          return Object.fromEntries(Object.entries(taxes).map(([k,v])=>[k,v.toFixed(2)]));
+        };
+        lineInputs.forEach(item=>{
+          item.rateInp.addEventListener('input',()=>{if(item.qty&&item.rateInp.value)item.taxableInp.value=round2(item.qty*Number(item.rateInp.value)).toFixed(2);computeTaxes(true);});
+          item.taxableInp.addEventListener('input',()=>computeTaxes(true));
+          item.gstInp.addEventListener('input',()=>computeTaxes(true));
+        });
+        gstinInput.addEventListener('input',()=>computeTaxes(true));posInput.addEventListener('input',()=>computeTaxes(true));
+        computeTaxes(false);
+        const masterNote=document.createElement('small');masterNote.className='business-hint';masterNote.textContent='Tally masters ke hisaab se values bhari gayi hain — original bill se match karke confirm karein.';form.append(masterNote);
+        form._computeTaxes=()=>computeTaxes(false);
+      }else{
+        totalInput=makeField('Bill Total ₹','number',content.invoice_total??data.proposal.totals?.total??'',{required:true,step:'0.01',min:'0.01'});
+      }
+      const errBox=document.createElement('p');errBox.className='business-blocker';errBox.hidden=true;form.append(errBox);
+      const previewBtn=document.createElement('button');previewBtn.type='submit';previewBtn.textContent='✓ Confirm & Preview (Tally)';form.append(previewBtn);
+      form.addEventListener('submit',async event=>{
+        event.preventDefault();errBox.hidden=true;
+        if(typeof form.reportValidity==='function'&&!form.reportValidity())return;
+        previewBtn.disabled=true;previewBtn.textContent='Preview taiyar ho raha hai…';
+        try{
+          const nextContent={party_name:content.party_name,entry_date:dateInput.value,godown:content.godown||null,invoice_number:invInput.value.trim(),tax_treatment:isGst?'regular_domestic_goods':(content.tax_treatment||null),unsupported_treatments:content.unsupported_treatments||[]};
+          if(isGst){
+            nextContent.supplier_gstin=gstinInput.value.trim().toUpperCase();
+            nextContent.place_of_supply=posInput.value.trim();
+            nextContent.invoice_discount=content.invoice_discount??'0';
+            nextContent.round_off=content.round_off??'0';
+            nextContent.expected_taxes=form._computeTaxes();
+            nextContent.invoice_total=Number(totalInput.value).toFixed(2);
+            nextContent.lines=lineInputs.map(it=>({item_name:it.line.item_name,quantity:String(it.line.quantity),unit:it.line.unit,rate:Number(it.rateInp.value).toFixed(2),...(it.line.discount_amount!=null?{discount_amount:String(it.line.discount_amount)}:{}),...(it.line.discount_percent!=null?{discount_percent:String(it.line.discount_percent)}:{}),gst_rate:String(it.gstInp.value.trim()),hsn:it.hsnInp.value.trim(),taxable_amount:Number(it.taxableInp.value).toFixed(2)}));
+          }else{
+            nextContent.invoice_total=Number(totalInput.value).toFixed(2);
+            if(Array.isArray(content.lines))nextContent.lines=content.lines.map(l=>({...l}));
+          }
+          const saveRes=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+encodeURIComponent(draftId),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:currentRevision,content:nextContent})});
+          const saveData=await saveRes.json().catch(()=>({}));
+          if(!saveRes.ok)throw new Error(typeof saveData.detail==='string'?saveData.detail:'Details save nahi hui.');
+          currentRevision=saveData.revision;
+          const prevRes=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+encodeURIComponent(draftId)+'/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:currentRevision})});
+          const prevData=await prevRes.json().catch(()=>({}));
+          if(!prevRes.ok)throw new Error(typeof prevData.detail==='string'?prevData.detail:'Preview taiyar nahi ho paya.');
+          const clean={response:prevData.response,preview:prevData.preview,tally_action:prevData.preview?.token,task_id:null,task_revision:null,proposal:null,issues:[]};
+          updateState?.(clean);updateMessage?.(prevData.response);tools.replaceChildren();renderResult?.(tools,clean);
+        }catch(error){errBox.textContent=error.message;errBox.hidden=false;}
+        finally{if(previewBtn.isConnected){previewBtn.disabled=false;previewBtn.textContent='✓ Confirm & Preview (Tally)';}}
+      });
+      tools.append(form);
+      const fallback=document.createElement('details');fallback.className='purchase-extra-options';
+      const fSum=document.createElement('summary');fSum.textContent='Text se correction likhna hai';fallback.append(fSum);
+      const fForm=document.createElement('form');fForm.className='purchase-inline-reply';
+      const fText=document.createElement('textarea');fText.rows=2;fText.maxLength=4000;fText.placeholder='Koi item/party/quantity badalna ho toh yahan likhein…';
+      const fBtn=document.createElement('button');fBtn.type='submit';fBtn.textContent='Update review';
+      fForm.append(fText,fBtn);
+      fForm.addEventListener('submit',event=>{event.preventDefault();if(fText.value.trim())submit(fText.value.trim());});
+      toolButton(fForm,'Details pata nahi',()=>submit('pata nahi'));
+      fallback.append(fForm);tools.append(fallback);
+    }else if(singleCard&&data.status==='needs_input'&&!compactFacts&&!hasIdentityBlockers&&!hasBlockedIssues){
       const form=document.createElement('form');form.className='purchase-inline-reply';
       const label=document.createElement('label');label.textContent=data.details_unknown?'Details milne par yahin likhein':'Missing details ya correction ek saath likhein';
       const answer=document.createElement('textarea');answer.rows=2;answer.maxLength=4000;
@@ -792,11 +962,7 @@
         const input=document.createElement('input');input.name=key;input.type=type;input.required=true;
         input.value=fields[key] ?? '';
         if(key==='counted_at'&&!input.value)input.value=new Date().toISOString();input.maxLength=200;if(type==='number'){input.min=key==='target_quantity'?'0':key==='rate'?'0.01':'0.000001';input.step=key==='rate'?'0.01':'any';}
-        if(type==='date'&&!input.value){
-          const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
-          const part=type=>parts.find(p=>p.type===type).value;
-          input.value=`${part('year')}-${part('month')}-${part('day')}`;
-        }
+        if(type==='date'&&!input.value)input.value=todayIstIso();
         label.append(input);entry.append(label);});
       const note=document.createElement('p');note.textContent=count?'Final physical count likhein, add/remove quantity nahi. Offline save ke baad live review aur fresh confirmation zaroori hai.':'Tally EDU mode mein purchase date restricted ho sakti hai. Test ke liye allowed date chunein; preview mein date check karein.';entry.append(note);
       const button=document.createElement('button');button.type='submit';button.textContent='Tally preview';entry.append(button);

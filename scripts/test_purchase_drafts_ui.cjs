@@ -84,6 +84,8 @@ if(require.main===module)(async()=>{
   const confirm=p.get('billDraftPreview').children.at(-1);await confirm.listeners.click();await flush();
   assert.equal(record.status,'queued');assert.equal(requests.filter(r=>r.url.endsWith('/confirm')).length,1);
   assert.equal(p.line(0).quantity.disabled,true);assert.equal(p.line(1).rate.disabled,true);assert.equal(p.get('billDraftSave').hidden,true);
+  assert.equal(p.get('billDraftSave').disabled,true,'busy completion must preserve read-only save lock');
+  assert.equal(p.get('billDraftMakePreview').disabled,true,'submitted drafts cannot create another preview');
   scope={...scope,organization_id:'other'};await confirm.listeners.click();
   assert.equal(requests.filter(r=>r.url.endsWith('/confirm')).length,1,'stale workspace cannot confirm');
   p.get('workspaceSelect').listeners.change();assert.equal(p.get('businessDrafts').open,false);

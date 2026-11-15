@@ -13,13 +13,14 @@ from app.services.tally_connector import (TallyConnector, TallyError, TallyRejec
     company_identity, decimal, name, value, stock_row, voucher_xml, verify_voucher, parse_xml, matches_action)
 from app.services.tally_validation import safe_catalog, validate_item, uses_cost_centres, match
 
-PROTOCOL_VERSION = 11
+PROTOCOL_VERSION = 12
 OPERATIONS = ('discover', 'stock', 'snapshot_start', 'snapshot_page', 'purchase_validate', 'purchase_post', 'purchase_reconcile', 'stock_count_validate', 'stock_count_post', 'stock_count_reconcile', 'mcp_read', 'mcp_compile', 'customer_ledger_validate', 'customer_ledger_post', 'customer_ledger_reconcile')
 OPERATIONS += ('purchase_gst_validate','purchase_gst_post','purchase_gst_reconcile')
 OPERATIONS += ('invoice_reference_check',)
 OPERATIONS += ('purchase_history_read',)
 OPERATIONS += ('purchase_multi_validate','purchase_multi_post','purchase_multi_reconcile')
 OPERATIONS += ('goods_receipt_validate','goods_receipt_post','goods_receipt_reconcile')
+OPERATIONS += ('masters_validate','masters_post','masters_reconcile')
 
 def fingerprint(catalog, payload):
     """Only relevant master rules; changing stock does not invalidate purchases."""
@@ -100,6 +101,9 @@ async def execute_sync(operation, *, company, identity, port=None, as_of=None, p
     if operation=='purchase_history_read':
         from app.services.tally_purchase_history import execute
         return await execute(connector,company,identity,payload,generation,page,journal_path)
+    if operation.startswith('masters_'):
+        from app.services.tally_master_actions import execute
+        return await execute(operation,connector,company,identity,payload,config,journal_path)
     if operation.startswith('goods_receipt_'):
         from app.services.tally_goods_receipt import execute
         return await execute(operation,connector,company,identity,payload,config,journal_path)

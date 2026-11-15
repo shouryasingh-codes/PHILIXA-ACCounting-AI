@@ -1,0 +1,13 @@
+{
+  "version": "supplier-data-development-v1",
+  "provenance": "Synthetic author-labelled development regression cases; no held-out or real-accountant accuracy claim. No native domain execution.",
+  "cases": [
+    {"id":"products-english","split":"development","category":"supplier_history","message":"Which products have we purchased from Summit Wholesale?","context":{},"expected":{"intent":"purchase_history_read","handler":"domain_read","relation":"standalone","target_task_id":null}},
+    {"id":"products-hinglish","split":"development","category":"supplier_history","message":"Naya Supply se kharide maal ki quantity aur rate dikhao","context":{},"expected":{"intent":"purchase_history_read","handler":"domain_read","relation":"standalone","target_task_id":null}},
+    {"id":"products-hindi","split":"development","category":"supplier_history","message":"कमल ट्रेडर्स से कौन सा सामान खरीदा था?","context":{},"expected":{"intent":"purchase_history_read","handler":"domain_read","relation":"standalone","target_task_id":null}},
+    {"id":"supplier-profile","split":"development","category":"supplier_profile","message":"Show the supplier ledger details for Summit Wholesale.","context":{},"expected":{"intent":"supplier_read","handler":"domain_read","relation":"standalone","target_task_id":null}},
+    {"id":"supplier-list","split":"development","category":"supplier_list","message":"Hamare vendors ke naam dikhao.","context":{},"expected":{"intent":"supplier_read","handler":"domain_read","relation":"standalone","target_task_id":null}},
+    {"id":"purchase-assertion","split":"development","category":"purchase","message":"Naya Supply se 4 BOX bolts 50 rupaye per box liye","context":{},"expected":{"intent":"purchase","handler":"agent","relation":"standalone","target_task_id":null}},
+    {"id":"combined-supplier-reads","split":"development","category":"compound","message":"Summit Wholesale ka ledger balance aur usse kharide items dono dikhao","context":{},"expected":{"intent":"compound","handler":"agent","relation":"standalone","target_task_id":null}}
+  ]
+}

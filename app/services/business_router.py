@@ -132,6 +132,8 @@ async def reserve_model(db,row):
     """Shares the agent's daily cap and advisory lock; no HTTP while locked."""
     from app.jobs.task_agent_jobs import billing_limits
     from app.ai.groq_gateway import QuotaDeferred
+    from app.services.ai_engine_manager import get_active_engine
+    provider=await get_active_engine()
     mode,cap,reserve=billing_limits()
     await db.execute(text('SELECT pg_advisory_xact_lock(73925,1)'))
     day_start=tasks.now().astimezone(ZoneInfo('Asia/Kolkata')).replace(hour=0,minute=0,second=0,microsecond=0)
@@ -139,12 +141,12 @@ async def reserve_model(db,row):
     routes=(await db.scalars(select(BusinessRoute).where(BusinessRoute.created_at>=day_start))).all()
     used=sum((Decimal(r.state.get('reserved_usd','0')) for r in runs),Decimal(0))
     used+=sum((Decimal(r.telemetry.get('reserved_usd','0')) for r in routes),Decimal(0))
-    calls=sum(bool(r.state.get('free_call')) for r in runs)+sum(bool(r.telemetry.get('free_call')) for r in routes)
+    calls=sum(bool(r.state.get('free_call')) for r in runs if r.state.get('provider','groq')=='groq')+sum(bool(r.telemetry.get('free_call')) for r in routes if r.telemetry.get('provider','groq')=='groq')
     from app.ai.groq_gateway import free_call_limit
     local_limit=free_call_limit()
-    if mode=='free' and local_limit is not None and calls>=local_limit:raise QuotaDeferred('local_cap')
+    if provider=='groq' and mode=='free' and local_limit is not None and calls>=local_limit:raise QuotaDeferred('local_cap')
     if mode=='paid' and used+reserve>cap:raise QuotaDeferred('local_cap')
-    row.telemetry={**row.telemetry,'reserved_usd':str(reserve),'free_call':mode=='free','model_attempts':1}
+    row.telemetry={**row.telemetry,'provider':provider,'reserved_usd':str(reserve),'free_call':mode=='free','model_attempts':1}
     row.status='classifying';await db.commit()
 
 
@@ -191,6 +193,22 @@ async def dispatch(db,principal,request,row,decision,context):
             return await run_business_graph(request,principal,db)
         if not context.get('company_id'):
             return clarification('Kis connected company ka data dekhna hai? Company select karein.','company_required')
+        if decision.intent=='purchase_history_read':
+            if not decision.party_name:
+                return clarification('Kis supplier se hui purchases dekhni hain? Supplier ka naam batayein.','supplier_required')
+            from app.services.supplier_purchase_read import read as history_read
+            dates={d.field:d.value for d in decision.report_dates}
+            return await history_read(db,principal,context['company_id'],decision.party_name,
+                from_date=dates.get('from_date'),to_date=dates.get('to_date') or dates.get('as_of'))
+        if decision.intent=='supplier_read':
+            from app.services.tally_suppliers import read_suppliers
+            from app.services.business_command_service import ParsedCommand
+            parsed = ParsedCommand(intent='supplier_read' if decision.party_name else 'supplier_list',
+                                   party_name=decision.party_name, item_name=decision.item_name, company_id=context['company_id'])
+            result = await read_suppliers(db, principal, parsed)
+            if not decision.party_name:
+                result = {**result, 'tally_choices': []}
+            return {**result, 'status': 'completed', 'response_kind': 'domain_read', 'can_resume': False}
         from app.services.task_agent_tools import registry
         tool_name='read_stock' if decision.intent=='stock_read' else 'read_report'
         tool=next(t for t in registry(db,principal,context['company_id'],{}) if t.name==tool_name)
@@ -239,8 +257,8 @@ async def dispatch(db,principal,request,row,decision,context):
             expected_revision=context['task_revision'],request_id=row.id,message=request.text,
             company_id=context.get('company_id'),selection=request.selection,context_refresh=request.context_refresh),routing_seed=seed)
     request_create=tasks.TaskCreate(message=request.text,request_id=row.id,company_id=context.get('company_id'),
-        outcome='answer' if decision.intent in ('stock_read','report_read') else 'verified_entry')
-    return await tasks.create(db,principal,request_create,routing_seed=seed)
+        outcome='answer' if decision.intent in ('stock_read','report_read','supplier_read','purchase_history_read') else 'verified_entry')
+    return await tasks.create(db,principal,request_create,routing_seed=seed,provider=row.telemetry.get('provider'))
 
 
 async def route(db,principal,request):
@@ -298,9 +316,13 @@ async def route(db,principal,request):
         if not decision:
             # No database lock/transaction remains held during provider I/O.
             from app.services.intent_router_model import classify
-            async with asyncio.timeout(8):
-                await reserve_model(db,row)
-                decision,usage=await classify(request.text,context,row.id)
+            from app.services.ai_engine_manager import get_active_engine,provider_scope
+            async with asyncio.timeout(20):
+                selected_provider=await get_active_engine()
+                row.telemetry={**row.telemetry,'provider':selected_provider}
+                with provider_scope(selected_provider):
+                    await reserve_model(db,row)
+                    decision,usage=await classify(request.text,context,row.id)
             row.telemetry={**row.telemetry,'usage':usage}
         row.telemetry={**row.telemetry,'path':'model' if row.telemetry.get('model_attempts') else 'deterministic',
                        'classification_ms':round((time.monotonic()-started)*1000)}
@@ -363,11 +385,28 @@ async def route(db,principal,request):
                 'Groq authentication fail hui (401). Server ki API configuration check karni hogi; koi accounting action nahi hua.')
             row.telemetry={**row.telemetry,'provider_http_status':status}
         elif isinstance(exc,TimeoutError):
+            from app.services.ai_engine_manager import EngineTimeout
             reason='routing_timeout'
             message='Message samajhne mein time limit lag gayi. Koi naya kaam start nahi kiya; dobara try kar sakte hain.'
+            if isinstance(exc,EngineTimeout):
+                reason='provider_response_timeout'
+                message='Gemini se jawab time limit mein nahi aaya. Retry karein; koi accounting action nahi hua.'
+                row.telemetry={**row.telemetry,'provider_timing':exc.diagnostic}
         elif isinstance(exc,RoutingNotSent):
             reason='routing_initializing'
             message='AI routing setup abhi ready nahi hai. Clear help/stock options available hain; naya kaam start nahi kiya.'
+        else:
+            from app.services.ai_engine_manager import EngineRequestError
+            if isinstance(exc,EngineRequestError):
+                reason=exc.code
+                row.telemetry={**row.telemetry,'provider_http_status':exc.status,'provider_timing':exc.diagnostic}
+                message='Selected AI provider abhi available nahi hai. Koi naya accounting kaam start nahi hua; dobara try karein.'
+                if exc.status in (502,503,504):
+                    reason='provider_temporarily_unavailable'
+                    message=f'Gemini service abhi temporary available nahi hai ({exc.status}). Thodi der baad Retry karein; koi accounting action nahi hua.'
+                elif exc.status==429:
+                    reason='provider_rate_limited'
+                    message='Gemini ne request limit ki wajah se roki (429). Baad mein Retry karein; koi accounting action nahi hua.'
         row.status='failed';row.result={**clarification(message,reason),'can_retry_routing':True}
         row.telemetry={**row.telemetry,'failure_type':type(exc).__name__}
     row.updated_at=tasks.now()

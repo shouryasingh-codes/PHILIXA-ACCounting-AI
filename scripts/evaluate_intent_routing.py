@@ -22,7 +22,7 @@ def fingerprint_for(dataset=DATA):
     import inspect
     import app.services.intent_router_model as model
     return hashlib.sha256(Path(dataset).read_bytes()+model.SYSTEM.encode()+VERSION.encode()
-        +json.dumps(model.WireRoute.model_json_schema(),sort_keys=True).encode()+inspect.getsource(model.resolve).encode()).hexdigest()
+        +json.dumps(model.routing_schema(),sort_keys=True).encode()+inspect.getsource(model.resolve).encode()).hexdigest()
 
 
 async def main(args):
@@ -30,8 +30,9 @@ async def main(args):
     dataset=Path(args.dataset) if args.dataset else DATA
     fingerprint=fingerprint_for(dataset)
     output=Path('data')/('intent-router-'+dataset.stem+'-'+('live-'+args.split if args.live else 'offline')+'.json')
+    if getattr(args,'provider',None):output=output.with_name(output.stem+'-'+args.provider+output.suffix)
     if args.case_id:output=output.with_name(output.stem+'-'+args.case_id+output.suffix)
-    report={'version':VERSION,'fingerprint':fingerprint,'mode':'live_classifier_only' if args.live else 'offline_fast_path_coverage',
+    report={'version':VERSION,'fingerprint':fingerprint,'requested_provider':getattr(args,'provider',None),'mode':'live_classifier_only' if args.live else 'offline_fast_path_coverage',
         'domain_tools_executed':False,'real_world_accuracy_verified':False,'rows':[]}
     if not args.resume and output.exists():
         old=json.loads(output.read_text(encoding='utf-8'))
@@ -91,12 +92,12 @@ async def main(args):
                         row.telemetry={**row.telemetry,'reserved_usd':'0','free_call':False,'model_attempts':0}
                         calls=max(0,calls-1)
                     row.status='failed';row.result={'failure':type(exc).__name__,'reason':getattr(exc,'reason',None),
-                        'diagnostic':getattr(exc,'diagnostic',None)}
+                        'diagnostic':getattr(exc,'diagnostic',None),'provider_status':getattr(exc,'status',None)}
                     report['blocked_case']={'id':case['id'],**row.result,
                         'retry_at':exc.retry_at.isoformat() if isinstance(exc,QuotaDeferred) and exc.retry_at else None}
                     if not isinstance(exc,QuotaDeferred):
                         rows.append({'id':case['id'],'category':case['category'],'split':case['split'],
-                                     'path':'model','correct_route':False,'failure':type(exc).__name__})
+                                     'path':'model','correct_route':False,**row.result})
                     await db.commit()
                     break
                 await db.commit()
@@ -119,10 +120,18 @@ async def main(args):
     print(json.dumps({'report':str(output),**report['summary'],'blocked':report.get('blocked_case')},ensure_ascii=False))
 
 
+async def run(args):
+    if getattr(args,'provider',None):
+        from app.services.ai_engine_manager import provider_scope
+        with provider_scope(args.provider):await main(args)
+    else:await main(args)
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--live',action='store_true');parser.add_argument('--resume',action='store_true')
     parser.add_argument('--case-id');parser.add_argument('--dataset');parser.add_argument('--split',choices=['development','heldout'],default='heldout')
     parser.add_argument('--max-calls',type=int,default=12)
+    parser.add_argument('--provider',choices=['groq','gemini'],help='Scope this evaluation only; do not change UI selection')
     args=parser.parse_args()
     if not 1<=args.max_calls<=50:raise SystemExit('Bounded free-tier pilot: 1..50 calls per invocation.')
-    asyncio.run(main(args))
+    asyncio.run(run(args))

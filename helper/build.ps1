@@ -53,7 +53,7 @@ if ($BuildOnly) {
     $hash
     return
 }
-$checks = @('transport','history','invoice','receipt')
+$checks = @('transport','history','invoice','receipt','masters')
 if ($WithMcp) { $checks += 'mcp' }
 $evidence = @{}
 foreach ($check in $checks) {
@@ -65,7 +65,7 @@ foreach ($check in $checks) {
     $process.Refresh()
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $resultPath)) { throw "Packaged $check check failed; installer withheld" }
     $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
-    $field = @{transport='client_ready';history='history_read';invoice='duplicate_blocked';receipt='receipt_codecs';mcp='stdio'}[$check]
+    $field = @{transport='client_ready';history='history_read';invoice='duplicate_blocked';receipt='receipt_codecs';masters='master_actions';mcp='stdio'}[$check]
     if ($result.$field -ne $true -or $result.error) { throw "Packaged $check result invalid; installer withheld" }
     if ($check -eq 'transport' -and (-not $result.async_client_ready -or -not $result.certificate_validation -or -not $result.ca_exists)) { throw 'Packaged async/TLS initialization unverified; installer withheld' }
     $evidence[$check] = $result

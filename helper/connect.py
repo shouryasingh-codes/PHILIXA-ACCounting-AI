@@ -613,6 +613,33 @@ if __name__ == '__main__':
         except Exception as exc:result={'error':type(exc).__name__}
         Path(sys.argv[sys.argv.index('--history-self-test')+1]).write_text(json.dumps(result))
         sys.exit(1 if 'error' in result else 0)
+    elif '--masters-self-test' in sys.argv:
+        # Synthetic native transport and temporary journal; never real Tally.
+        import tempfile,uuid
+        from types import SimpleNamespace
+        from xml.etree import ElementTree as ET
+        from app.services import tally_master_actions as masters
+        result={}
+        try:
+            async def probe():
+                rows={'ledgers':[],'units':[],'items':[]};posts=[]
+                async def catalog(company):return rows
+                async def post(xml):
+                    posts.append(xml)
+                    for row in ET.fromstring(xml).findall('.//TALLYMESSAGE/*'):rows[masters.KINDS[row.tag]].append(row)
+                p={'operation':'masters_create','company':'Synthetic Test','guid':str(uuid.uuid4()),'masters':[
+                    {'kind':'LEDGER','name':'Synthetic Supplier','guid':str(uuid.uuid4()),'fields':dict(masters.BASE['LEDGER'])}]}
+                c=SimpleNamespace(catalog=catalog,post=post);cfg={'company':p['company'],'test_company':True}
+                with tempfile.TemporaryDirectory() as tmp:
+                    for _ in range(2):
+                        reply=await masters.execute('masters_post',c,p['company'],'synthetic',p,cfg,str(Path(tmp)/'journal'))
+                        assert reply['status']=='verified'
+                    assert len(posts)==1
+            asyncio.run(probe());assert PROTOCOL_VERSION>=12
+            result={'master_actions':True,'protocol_version':PROTOCOL_VERSION,'real_tally_called':False}
+        except Exception as exc:result={'error':type(exc).__name__}
+        Path(sys.argv[sys.argv.index('--masters-self-test')+1]).write_text(json.dumps(result))
+        sys.exit(1 if 'error' in result else 0)
     elif '--receipt-self-test' in sys.argv:
         from xml.etree import ElementTree as ET
         from app.services.tally_goods_receipt import receipt_xml,verify,RECEIPT_CODEC_CERTIFIED

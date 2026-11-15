@@ -236,6 +236,13 @@ def action_result(action):
     result=dict(action.result or {})
     result.update(response=result.get('response') or labels.get(action.status,action.status),sync_status=action.status,
                   tally_status=action.status,action_id=action.token,tally_action=action.token)
+    if action.payload.get('operation')=='masters_create' and not (action.result or {}).get('response'):
+        result['response']={'preview':'Master preview ready; confirmation required. No Tally masters created.',
+            'queued':'Master request approved; Tally creation queued. No purchase voucher created.',
+            'submitting':'Master creation submitted; native verification pending.',
+            'verification_pending':'Master verification pending; no blind resend.',
+            'verified':'Tally masters verified; purchase review still required.',
+            'cancelled':'Unsubmitted master request cancelled.'}.get(action.status,'Master request needs review; no purchase success claimed.')
     if action.payload.get('operation')=='stock_count_set':
         from app.services.tally_count import count_capability
         capability=count_capability()
@@ -276,6 +283,10 @@ async def confirm_queued(db,principal,action,approve=True,status_only=False):
     if getattr(action,'backend',None) not in (None,'python'):
         raise HTTPException(409,'MCP writes need operation-specific durable dispatch and live acceptance. Approval blocked.')
     if action.status!='preview':return action_result(action)
+    if action.payload.get('operation')=='masters_create':
+        from app.services.master_creation_service import guard
+        try:await guard(db,action)
+        except TallyError as exc:raise HTTPException(409,str(exc))
     if action.payload.get('operation')=='goods_receipt' or (action.preconditions or {}).get('receipt_link'):
         from app.services.tally_goods_receipt import RECEIPT_CODEC_CERTIFIED
         if not RECEIPT_CODEC_CERTIFIED:raise HTTPException(409,'Native tracked-receipt acceptance pending; posting locked.')
@@ -299,6 +310,12 @@ async def confirm_queued(db,principal,action,approve=True,status_only=False):
         raise HTTPException(410,'Company/helper/config changed. Naya preview banayein.')
     if action.payload.get('operation')=='customer_ledger_create' and action.target_identity!={'company':company.identity}:
         raise HTTPException(410,'Customer company identity changed. Naya preview banayein.')
+    if action.payload.get('operation')=='masters_create':
+        from app.core.redis import get_redis_client
+        redis=await get_redis_client()
+        try:ready=bool(device and await redis.exists('tally:v12online:'+device.id))
+        finally:await redis.aclose()
+        if not cfg or not cfg.test_company or not ready or action.target_identity!={'company':company.identity}:raise HTTPException(409,'Master creation requires approved test company and online protocol 12 paired connector.')
     if action.payload.get('operation') in ('purchase_multi','purchase_gst','goods_receipt') and action.target_identity!={'company':company.identity}:
         raise HTTPException(410,'Purchase company identity changed. Naya preview banayein.')
     if action.payload.get('operation')=='purchase_gst':
@@ -352,6 +369,9 @@ async def process_action(db,action,company):
             action.status='needs_review';await db.commit();return
         from app.services.tally_customer import process_customer
         return await process_customer(db,action,company,cfg)
+    if action.payload.get('operation')=='masters_create':
+        from app.services.master_creation_service import process
+        return await process(db,action,company,cfg)
     count=action.payload.get('operation')=='stock_count_set'
     receipt=action.payload.get('operation')=='goods_receipt'
     multi=action.payload.get('operation') in ('purchase_multi','purchase_gst','goods_receipt')

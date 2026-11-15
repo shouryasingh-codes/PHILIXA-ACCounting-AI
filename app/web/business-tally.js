@@ -478,7 +478,7 @@
       const options=document.createElement('div');options.className='purchase-history-options';alternatives.append(options);
       (data.purchase_assistant.choices||[]).filter(choice=>choice!=='Haan, supplier aur rates wahi hain').forEach(choice=>toolButton(options,choice,()=>submit(choice,false,{purchase_reply:data.purchase_assistant})));
       card.append(alternatives);tools.append(card);
-    }else if(data.purchase_assistant?.choices?.length&&(!singleCard||data.status!=='waiting_context')){
+    }else if(data.purchase_assistant&&(data.purchase_assistant.choices?.length||hasIdentityBlockers)&&(!singleCard||data.status!=='waiting_context')){
       const options=document.createElement('section');options.className='purchase-choice-card';
       options.setAttribute('aria-label',data.purchase_assistant.field==='party_name'?'Supplier selection':'Purchase options');
       const allIssues=data.issues||data.purchase_context?.issues||[];
@@ -487,17 +487,36 @@
       const hasMissingItems=missingItemIssues.length>0;
 
       const choices=document.createElement('div');choices.className='purchase-choice-list';options.append(choices);
+      let mastersPending=false;
+      const masterPreview=async(create_supplier,create_items)=>{
+        if(mastersPending)return;
+        const draftId=data.draft_id||data.purchase_assistant.draft_id;
+        const revision=data.proposal?.revision??data.purchase_assistant.revision;
+        if(!draftId||!Number.isInteger(revision)){const p=document.createElement('p');p.textContent='Current draft review reload karein; revision missing hai.';choices.append(p);return;}
+        const scope=JSON.stringify(window.getBusinessChatScope?.()||{});mastersPending=true;
+        try{
+          const response=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+encodeURIComponent(draftId)+'/masters-preview',{
+            method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision,create_supplier,create_items})});
+          const result=await response.json();
+          if(scope!==JSON.stringify(window.getBusinessChatScope?.()||{})||tools.isConnected===false)return;
+          if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Master preview unavailable.');
+          // This separate action is not the purchase task's voucher approval.
+          const clean={...result,task_id:null,task_revision:null,proposal:null,purchase_assistant:null,issues:[],selections:[]};
+          updateState?.(clean);updateMessage?.(result.response);tools.replaceChildren();renderResult?.(tools,clean);
+        }catch(error){if(scope===JSON.stringify(window.getBusinessChatScope?.()||{})&&tools.isConnected!==false){const p=document.createElement('p');p.textContent=error.message;choices.append(p);}}
+        finally{mastersPending=false;}
+      };
 
       if(hasMissingSupplier&&hasMissingItems){
-        toolButton(choices,'✨ Tally me Supplier aur Stock Items bana do',()=>submit('Tally me Supplier aur Stock Items bana do'));
+        toolButton(choices,'Supplier aur items ka preview',()=>masterPreview(true,true));
         toolButton(choices,'🔗 Existing masters se map karein',()=>submit('Existing masters se map karna hai'));
       }else if(hasMissingItems){
         const itemCount=missingItemIssues.length;
-        toolButton(choices,`✨ Tally me ye ${itemCount} naye stock items bana do`,()=>submit('Tally me naye stock items bana do'));
+        toolButton(choices,`${itemCount} naye items ka preview`,()=>masterPreview(false,true));
         toolButton(choices,'🔗 Existing item se map karein',()=>submit('Existing item se map karna hai'));
         toolButton(choices,'🔄 Tally items sync karein',()=>submit('Tally items sync karo'));
       }else if(hasMissingSupplier){
-        toolButton(choices,'✨ Tally me Supplier bana do',()=>submit('Tally me Supplier bana do'));
+        toolButton(choices,'Supplier ka preview',()=>masterPreview(true,false));
         toolButton(choices,'🔗 Existing supplier se map karein',()=>submit('Existing supplier se map karna hai'));
       }
 

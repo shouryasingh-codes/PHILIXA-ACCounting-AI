@@ -1,13 +1,218 @@
 """Scoped supplier master reads. No model answers, writes, RAG or generated SQL."""
+import asyncio
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
+from sqlalchemy import select
+from app.services import tally_sync as sync
+from app.services.purchase_identity import exact_master, master_identity
 from app.services.tally_connector import TallyError, name, value
+from app.services.tally_purchase_history import validate_query
 from app.services.tally_stock import resolve_scope
 from app.services.tally_sync import refresh_company, saved_snapshot
 from app.services.tally_sync_protocol import deserialize_catalog
 from app.services.tally_supplier_codec import supplier_rows
 
 
-def choice(parsed, company, ledger):
-    return {'name': company.name + ' / ' + name(ledger), 'command': {
+def _fmt_qty(val: Decimal) -> str:
+    """Format Decimal quantities concisely without losing fractional precision."""
+    normalized = val.normalize()
+    if normalized == normalized.to_integral_value():
+        return str(normalized.quantize(Decimal('1')))
+    return format(normalized, 'f')
+
+
+def _norm_rate(raw: str) -> str | None:
+    """Normalize equivalent rate strings like '350' and '350.00' for deduplication."""
+    text = (raw or '').strip()
+    if not text:
+        return None
+    try:
+        dec = Decimal(text)
+    except (InvalidOperation, ValueError):
+        return text
+    if dec == dec.to_integral_value():
+        return str(dec.quantize(Decimal('1')))
+    return str(dec.quantize(Decimal('0.01')) if dec.as_tuple().exponent < -2 else dec.normalize())
+
+
+def _accumulate_history_records(aggregated: dict[tuple[str, str], dict], sup: str, records: list[dict]) -> None:
+    """Accumulate positive quantities, units, and distinct rates per (supplier, item)."""
+    for rec in records or []:
+        item_name = (rec.get('item') or '').strip()
+        if not item_name:
+            continue
+        try:
+            qty = Decimal(str(rec.get('quantity') or '0'))
+        except (InvalidOperation, ValueError):
+            continue
+        if qty <= 0:
+            continue
+        bucket = aggregated.setdefault((sup, item_name), {'qty': Decimal(0), 'unit': '', 'rates': []})
+        bucket['qty'] += qty
+        if not bucket['unit'] and rec.get('unit'):
+            bucket['unit'] = str(rec['unit']).strip()
+        rate_str = str(rec.get('rate') or '').strip()
+        if rate_str and rate_str not in bucket['rates']:
+            bucket['rates'].append(rate_str)
+
+
+async def _load_cache_items(db, company_id: str, folded_suppliers: dict[str, str]):
+    """Aggregate quantities and rates from each supplier's newest ready PurchaseHistoryCache."""
+    from app.models.purchase_agent import PurchaseHistoryCache
+
+    cache_rows = (await db.scalars(
+        select(PurchaseHistoryCache)
+        .where(PurchaseHistoryCache.company_id == company_id, PurchaseHistoryCache.status == 'ready')
+        .order_by(PurchaseHistoryCache.collected_at.desc(), PurchaseHistoryCache.updated_at.desc())
+    )).all()
+    seen_suppliers: set[str] = set()
+    aggregated: dict[tuple[str, str], dict] = {}
+    for row in cache_rows:
+        sup = folded_suppliers.get(((row.query or {}).get('supplier') or '').strip().casefold())
+        if not sup or sup in seen_suppliers:
+            continue
+        seen_suppliers.add(sup)
+        _accumulate_history_records(aggregated, sup, (row.data or {}).get('records', []))
+    return aggregated, seen_suppliers
+
+
+async def _load_live_tally_items(db, company, catalog: dict, missing_suppliers: list[str]) -> dict[tuple[str, str], dict]:
+    """Query live Tally purchase history for uncached suppliers when item coverage is complete."""
+    items = catalog.get('items', []) if catalog else []
+    if not 1 <= len(items) <= 100 or not missing_suppliers:
+        return {}
+    today = datetime.now(ZoneInfo('Asia/Kolkata')).date()
+    start = today - timedelta(days=180)
+    try:
+        items_payload = [{'name': name(i), 'id': master_identity(i)} for i in items]
+    except TallyError:
+        return {}
+    aggregated: dict[tuple[str, str], dict] = {}
+    for sup in missing_suppliers[:10]:
+        try:
+            async with asyncio.timeout(6):
+                party = exact_master(catalog, 'supplier', sup)
+                query = validate_query({
+                    'supplier': name(party),
+                    'supplier_id': master_identity(party),
+                    'items': items_payload,
+                    'from_date': start.isoformat(),
+                    'to_date': today.isoformat(),
+                })
+                manifest = await sync.operation(db, company, 'purchase_history_read', payload=query)
+                hashes = manifest.get('hashes')
+                if manifest.get('complete') is not True or not isinstance(hashes, list) or not 0 < len(hashes) <= 10:
+                    continue
+                for page in range(len(hashes)):
+                    reply = await sync.operation(db, company, 'purchase_history_read', payload=query,
+                                                 generation=manifest['generation'], page=page)
+                    entries = reply.get('records')
+                    if isinstance(entries, list):
+                        _accumulate_history_records(aggregated, sup, entries)
+        except Exception:
+            continue
+    return aggregated
+
+
+async def _load_action_items(db, company_id: str, folded_suppliers: dict[str, str]):
+    """Aggregate quantities and rates from verified TallyAction purchase and receipt vouchers."""
+    from app.models.tally import TallyAction
+    from app.services.tally_multi_purchase_service import action_lines
+
+    action_rows = (await db.scalars(
+        select(TallyAction)
+        .where(TallyAction.company_id == company_id, TallyAction.status == 'verified')
+        .order_by(TallyAction.created_at.asc())
+    )).all()
+    aggregated: dict[tuple[str, str], dict] = {}
+    for action in action_rows:
+        payload = action.payload or {}
+        op = payload.get('operation')
+        if op not in (None, 'purchase_multi', 'purchase_gst', 'goods_receipt'):
+            continue
+        sup = folded_suppliers.get((payload.get('party') or '').strip().casefold())
+        if not sup:
+            continue
+        for line in action_lines(payload):
+            item_name = (line.get('item') or '').strip()
+            if not item_name:
+                continue
+            try:
+                qty = Decimal(str(line.get('quantity') or '0'))
+            except (InvalidOperation, ValueError):
+                continue
+            if qty <= 0:
+                continue
+            bucket = aggregated.setdefault((sup, item_name), {
+                'purchase_qty': Decimal(0), 'receipt_qty': Decimal(0), 'unit': '', 'rates': [],
+            })
+            if op == 'goods_receipt':
+                bucket['receipt_qty'] += qty
+            else:
+                bucket['purchase_qty'] += qty
+            if not bucket['unit'] and line.get('unit'):
+                bucket['unit'] = str(line['unit']).strip()
+            rate_str = str(line.get('rate') or '').strip()
+            if rate_str and rate_str not in bucket['rates']:
+                bucket['rates'].append(rate_str)
+    return aggregated
+
+
+async def supplier_purchased_items(db, company, supplier_names, *, catalog=None, live=False):
+    """Map company-scoped suppliers to verified purchased items without double-counting cache vs actions."""
+    if db is None or not supplier_names:
+        return {}
+    folded_suppliers = {s.casefold(): s for s in supplier_names if s}
+    if not folded_suppliers:
+        return {}
+    cache_items, covered_suppliers = await _load_cache_items(db, company.id, folded_suppliers)
+    if live and catalog:
+        uncached = [s for s in supplier_names[:10] if s and s not in covered_suppliers]
+        if uncached:
+            live_items = await _load_live_tally_items(db, company, catalog, uncached)
+            for key, bucket in live_items.items():
+                cache_items.setdefault(key, bucket)
+    action_items = await _load_action_items(db, company.id, folded_suppliers)
+    by_supplier: dict[str, list[str]] = {}
+    for sup, item_name in sorted(set(cache_items) | set(action_items)):
+        c = cache_items.get((sup, item_name))
+        a = action_items.get((sup, item_name))
+        c_qty = c['qty'] if c else Decimal(0)
+        a_purch_qty = a['purchase_qty'] if a else Decimal(0)
+        receipt_qty = a['receipt_qty'] if a else Decimal(0)
+        if c_qty >= a_purch_qty:
+            purch_qty = c_qty
+            unit = (c['unit'] if c else '') or (a['unit'] if a else '')
+            raw_rates = list(c['rates']) if c else []
+        else:
+            purch_qty = a_purch_qty
+            unit = (a['unit'] if a else '') or (c['unit'] if c else '')
+            raw_rates = list(a['rates']) if a else []
+        if receipt_qty > 0 and a:
+            raw_rates = raw_rates + list(a['rates'])
+        rates: list[str] = []
+        for raw_rate in raw_rates:
+            norm = _norm_rate(raw_rate)
+            if norm and norm not in rates:
+                rates.append(norm)
+        unit_suffix = f" {unit}" if unit else ''
+        if purch_qty > 0 and receipt_qty > 0:
+            qty_text = f"{_fmt_qty(purch_qty)}{unit_suffix} Purchase + {_fmt_qty(receipt_qty)}{unit_suffix} Receipt Note"
+        elif purch_qty > 0:
+            qty_text = f"{_fmt_qty(purch_qty)}{unit_suffix}"
+        else:
+            qty_text = f"{_fmt_qty(receipt_qty)}{unit_suffix} Receipt Note"
+        rate_suffix = ' @ ' + ' / '.join(f'₹{r}' for r in rates) if rates else ''
+        open_parens = item_name.count('(') - item_name.count(')')
+        display_name = item_name + (')' * open_parens) if open_parens > 0 else item_name
+        by_supplier.setdefault(sup, []).append(f"{display_name} ({qty_text}{rate_suffix})")
+    return by_supplier
+
+
+def choice(parsed, company, ledger, multiple_companies=False):
+    btn_label = f"{company.name} / {name(ledger)}" if multiple_companies else name(ledger)
+    return {'name': btn_label, 'command': {
         'intent': 'supplier_read', 'fields': {'company_id': company.id, 'party_name': name(ledger)}}}
 
 
@@ -47,8 +252,11 @@ async def read_suppliers(db, principal, parsed):
                 raise TallyError('Company access changed')
             if await saved_snapshot(db, company) is None:
                 raise TallyError('Device access changed')
+            purchased_by_supplier = await supplier_purchased_items(
+                db, company, [name(l) for l in matches[:100]], catalog=catalog, live=live)
             source = 'live' if live else 'saved'
-            lines.append(f'{company.name} — {"Tally live suppliers" if live else "Saved Tally suppliers (live unavailable)"}; read time: {snapshot.collected_at.isoformat()}')
+            status_text = "Tally live suppliers" if live else "Saved Tally suppliers (live unavailable)"
+            lines.append(f"{company.name} — {status_text}")
             complete = 'groups' in snapshot.catalog
             if not complete:
                 lines.append('Older connector: direct Sundry Creditors ledgers only; subgroup coverage unverified. Connector update required for complete list.')
@@ -60,15 +268,45 @@ async def read_suppliers(db, principal, parsed):
                     lines.append('Is company mein matching supplier nahi mila.')
             elif parsed.intent == 'supplier_read' and len(matches) == 1:
                 ledger = matches[0]
-                lines.extend([name(ledger), 'Tally group: ' + value(ledger, 'PARENT')])
-                for label, tag in [('Phone', 'LEDGERPHONE'), ('Mobile', 'LEDGERMOBILE'), ('Email', 'EMAIL'), ('Opening balance (Tally raw)', 'OPENINGBALANCE'), ('Closing balance (Tally raw)', 'CLOSINGBALANCE')]:
+                lines.extend(['', name(ledger), 'Tally group: ' + value(ledger, 'PARENT')])
+                for label, tag in [('Phone', 'LEDGERPHONE'), ('Mobile', 'LEDGERMOBILE'), ('Email', 'EMAIL'), ('Opening balance', 'OPENINGBALANCE'), ('Closing balance', 'CLOSINGBALANCE')]:
                     field = value(ledger, tag)
                     if field:
                         lines.append(label + ': ' + field)
+                if db is not None and purchased_by_supplier.get(name(ledger)):
+                    lines.append('Purchased items: ' + ', '.join(purchased_by_supplier[name(ledger)]))
                 results.append({'company_id': company.id, 'company': company.name, 'name': name(ledger), 'group': value(ledger, 'PARENT'), 'data_source': source})
             else:
-                lines.append(f'{len(matches)} suppliers match. Details ke liye naam select karein.')
-                choices.extend(choice(parsed, company, l) for l in matches[:100])
+                multiple_cos = len(scope) > 1
+                if parsed.intent == 'supplier_read' and query:
+                    lines.append(f"'{parsed.party_name}' se match hote hue {len(matches)} suppliers mile. Select karein:")
+                else:
+                    item_filter = (parsed.item_name or '').strip()
+                    item_key = item_filter.casefold()
+                    filtered_matches = ([
+                        l for l in matches
+                        if any(item_key in entry.casefold() for entry in purchased_by_supplier.get(name(l), []))
+                    ] if parsed.intent == 'supplier_list' and item_key and item_key != '*' and db is not None else [])
+                    if filtered_matches:
+                        lines.append(f"\n'{item_filter}' aapne in suppliers se kharida hai:\n")
+                        for l in filtered_matches[:25]:
+                            lines.append(f"  • {name(l)}")
+                            matching_items = [e for e in purchased_by_supplier.get(name(l), []) if item_key in e.casefold()]
+                            lines.append(f"    Stock/Items: {', '.join(matching_items)}")
+                        matches = filtered_matches
+                    else:
+                        if item_key and item_key != '*':
+                            lines.append(f"\n'{item_filter}' ke liye kisi supplier se verified purchase record nahi mila. Saare {len(matches)} suppliers:\n")
+                        else:
+                            lines.append(f"\nAapke paas kul {len(matches)} suppliers (Sundry Creditors) hain:\n")
+                        for i, l in enumerate(matches[:25], 1):
+                            lines.append(f"  • {name(l)}")
+                            if db is not None:
+                                items_summary = purchased_by_supplier.get(name(l))
+                                lines.append(f"    Stock/Items: {', '.join(items_summary)}" if items_summary else "    Stock/Items: Koi verified purchase record nahi mila")
+                        if len(matches) > 25:
+                            lines.append(f"  ...aur {len(matches) - 25} suppliers")
+                choices.extend(choice(parsed, company, l, multiple_cos) for l in matches[:100])
                 if len(matches) > 100:
                     lines.append('First 100 shown; supplier ka naam search karein.')
         except TallyError:

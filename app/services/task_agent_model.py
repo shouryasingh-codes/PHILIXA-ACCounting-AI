@@ -19,7 +19,7 @@ class WireDecision(BaseModel):
 
 
 class AgentProviderUnavailable(Exception):
-    def __init__(self,status=None,diagnostic=None):
+    def __init__(self,status=None,diagnostic=None,provider='groq'):
         self.status=status
         self.diagnostic=diagnostic
         self.code={401:'provider_authentication',403:'provider_access_denied',
@@ -27,6 +27,7 @@ class AgentProviderUnavailable(Exception):
         self.safe_message={403:'Groq access denied (403). Task saved; check provider/network access. No entry posted.',
             429:'Groq free-tier rate limit reached. Task saved; wait before resuming.'}.get(status,
             'Groq request unavailable. Task saved; no successful entry assumed.')
+        self.safe_message=self.safe_message.replace('Groq','Gemini' if provider=='gemini' else 'Groq')
         super().__init__(self.code)
 
 
@@ -84,27 +85,43 @@ def request_payload(state,schemas,*,prompt_version=None):
         response_format={'type':'json_schema','json_schema':{'name':'agent_decision','strict':True,'schema':schema}})
 
 async def choose(state, schemas, *, prompt_version=None):
+    from app.services.ai_engine_manager import get_active_engine, call_gemini_json
+    engine = state.get('provider') or await get_active_engine()
     settings = get_settings()
-    provider = GroqProvider(settings)
-    key = settings.ai_api_key or settings.groq_api_key
-    if not key:raise ValueError('Configured Groq key unavailable')
-    if settings.ai_economy_model.replace('groq/','')!='openai/gpt-oss-20b':
-        raise ValueError('Task agent baseline requires configured GPT-OSS 20B')
-    payload=request_payload(state,schemas,prompt_version=prompt_version)
-    try:
-        data = await asyncio.wait_for(asyncio.to_thread(_post_json, provider.base_url, payload,
-            {'Authorization': 'Bearer '+key}, timeout_seconds=25, max_attempts=1), timeout=30)
-    except AIExtractionError as exc:
-        known=('json_validate_failed','failed_generation','context_length_exceeded','max_completion_tokens','invalid_request_error','model_not_found')
-        diagnostic=next((marker for marker in known if marker in str(exc)),None)
-        raise AgentProviderUnavailable(getattr(exc.__cause__,'code',None),diagnostic) from None
-    message = data['choices'][0]['message']
-    if message.get('refusal'):
-        raise ValueError('Model refused task')
-    wire = WireDecision.model_validate_json(message['content'])
+
+    if engine == "gemini":
+        schema_json = json.dumps(WireDecision.model_json_schema())
+        sys_prompt = system_prompt(state, schemas, prompt_version) + '\nResponse contract: summary is internal rationale only. user_response is the concise direct question/answer for the user, in their language; never instructions to another assistant. Interpret the latest message first: general capability/help questions do not refer to attached bills merely because attachments exist.\nResponse schema (Strict JSON format):\n' + schema_json
+        context = planner_context(state, schemas)
+        from app.services.ai_engine_manager import EngineRequestError
+        try:
+            content, usage = await call_gemini_json(sys_prompt, context, schema=WireDecision.model_json_schema(), timeout_seconds=20)
+        except EngineRequestError as exc:
+            raise AgentProviderUnavailable(exc.status,exc.code,provider='gemini') from None
+        data = {'usage': usage}
+    else:
+        provider = GroqProvider(settings)
+        key = settings.ai_api_key or settings.groq_api_key
+        if not key:raise ValueError('Configured Groq key unavailable')
+        if settings.ai_economy_model.replace('groq/','')!='openai/gpt-oss-20b':
+            raise ValueError('Task agent baseline requires configured GPT-OSS 20B')
+        payload=request_payload(state,schemas,prompt_version=prompt_version)
+        try:
+            data = await asyncio.wait_for(asyncio.to_thread(_post_json, provider.base_url, payload,
+                {'Authorization': 'Bearer '+key}, timeout_seconds=25, max_attempts=1), timeout=30)
+        except AIExtractionError as exc:
+            known=('json_validate_failed','failed_generation','context_length_exceeded','max_completion_tokens','invalid_request_error','model_not_found')
+            diagnostic=next((marker for marker in known if marker in str(exc)),None)
+            raise AgentProviderUnavailable(getattr(exc.__cause__,'code',None),diagnostic) from None
+        message = data['choices'][0]['message']
+        if message.get('refusal'):
+            raise ValueError('Model refused task')
+        content = message['content']
+
+    wire = WireDecision.model_validate_json(content)
     # No arguments are executed for a question/finish. Models may legitimately
     # emit an empty string there despite the outer strict string schema.
     arguments=json.loads(wire.arguments_json) if wire.kind=='tool' else {}
     result = Decision.model_validate(dict(kind=wire.kind, tool=wire.tool,
         arguments=arguments, summary=wire.summary, user_response=wire.user_response))
-    return result, {**data.get('usage', {}),'prompt_package':metadata(state,schemas,prompt_version)}
+    return result, {**data.get('usage', {}),'provider':engine,'prompt_package':metadata(state,schemas,prompt_version)}

@@ -8,6 +8,15 @@ class Empty(BaseModel):
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_verified_native_history_needs_no_second_model_call(self):
+        from unittest.mock import AsyncMock
+        choose=AsyncMock(return_value={'kind':'tool','tool':'read_supplier_purchases','arguments':{},'summary':'Read history'})
+        execute=AsyncMock(return_value=ToolResult(status='ok',verified=True,data={'response':'Native purchase lines','history_complete':True}))
+        tool=Tool('read_supplier_purchases','Read',Empty,'read',AsyncMock(),execute)
+        result=await run({'messages':['Past supplier purchases'],'outcome':'answer'},[tool],choose,self.persist,self.budget)
+        self.assertEqual(result['status'],'completed');self.assertEqual(result['summary'],'Native purchase lines')
+        choose.assert_awaited_once();execute.assert_awaited_once()
+
     async def test_internal_rationale_is_not_a_public_reply(self):
         async def choose(state, schemas):
             return dict(kind='needs_input', tool=None, arguments={},

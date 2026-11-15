@@ -9,7 +9,7 @@ import subprocess
 import time
 import xml.etree.ElementTree as ET
 
-VERSION = '3.8.0'
+VERSION = '3.8.1'
 from helper.package_runtime import data_home, is_packaged, startup_state, startup_enabled
 HOME = data_home()
 TASK = 'PhilixaTallyConnector-' + hashlib.sha256(getpass.getuser().encode()).hexdigest()[:12]

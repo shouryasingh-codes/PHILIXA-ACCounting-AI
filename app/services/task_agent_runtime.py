@@ -49,13 +49,15 @@ class ExecutionNotStarted(Exception):
     """The adapter guarantees that no domain operation was invoked."""
 
 def settled_stock_answer(state):
-    """A server-rendered stock result needs no model narration/second call."""
+    """Verified server-rendered reads need no model narration/second call."""
     if state.get('outcome')!='answer':return None
     events=state.get('executions',[])
-    if not events or events[-1].get('tool')!='read_stock' or any(e.get('effect')!='read' or e.get('status')!='settled' for e in events):return None
+    if not events or events[-1].get('tool') not in ('read_stock','read_supplier_purchases') or any(e.get('effect')!='read' or e.get('status')!='settled' for e in events):return None
     latest=(state.get('observations') or [{}])[-1]
     data=latest.get('data',{})
-    if not data.get('stock_results') or not data.get('response'):return None
+    if not data.get('response'):return None
+    if events[-1].get('tool')=='read_stock' and not data.get('stock_results'):return None
+    if events[-1].get('tool')=='read_supplier_purchases' and (data.get('history_complete') is not True or latest.get('verified') is not True):return None
     return latest
 
 def direct_stock_question(state):
@@ -275,7 +277,7 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
 
 def available_tools(state,tools):
     groups={'purchase':{'company_masters','read_purchase_draft','purchase_context','record_purchase_situation','apply_user_message','create_purchase_draft','check_purchase_tax','purchase_preview','evaluate_automation','create_tally_masters'},
-        'reads':{'company_masters','read_stock','read_report'},'documents':{'list_documents','document_status','extract_document','read_bill_fields'},
+        'reads':{'company_masters','read_stock','read_report','read_supplier_purchases'},'documents':{'list_documents','document_status','extract_document','read_bill_fields'},
         'receipts':{'record_purchase_situation','receipt_preview','link_receipt','read_purchase_draft'}}
     active=state.get('tool_groups') or ['reads' if state.get('outcome')=='answer' else 'purchase']
     latest=(state.get('observations') or [{}])[-1].get('data',{})
@@ -330,8 +332,10 @@ async def run(state: dict, tools: list[Tool], choose, persist, budget, completio
             decision=Decision.model_validate(seed)
             if decision.tool not in {'create_purchase_draft','apply_user_message','purchase_context','create_tally_masters'} or not any(t.name==decision.tool and t.effect=='draft' for t in permitted):
                 raise ValueError('Invalid server routing seed')
-            if decision.tool in {'purchase_context', 'create_tally_masters'} and (not state.get('attachment_document_ids') or decision.arguments.get('draft_id')!=state.get('draft_id')):
+            if decision.tool=='purchase_context' and (not state.get('attachment_document_ids') or decision.arguments.get('draft_id')!=state.get('draft_id')):
                 raise ValueError('Invalid saved bill routing seed')
+            if decision.tool=='create_tally_masters' and decision.arguments.get('draft_id')!=state.get('draft_id'):
+                raise ValueError('Invalid master preview target')
             state.pop('routing_first_step',None)
         elif direct_stock_question(state) and not state['executions'] and any(t.name=='read_stock' and t.effect=='read' for t in permitted):
             decision=Decision(kind='tool',tool='read_stock',arguments={'item_name':'*'},summary='Tally ka stock check kar raha hoon.')

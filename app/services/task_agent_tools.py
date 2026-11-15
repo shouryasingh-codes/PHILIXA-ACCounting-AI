@@ -29,9 +29,15 @@ class DraftSituation(DraftId):
     message_index:int=Field(ge=0,le=1000)
 
 
+class MasterUnit(Empty):
+    name:str=Field(min_length=1,max_length=50)
+    decimal_places:int=Field(ge=0,le=6)
+    uqc:str=Field(pattern=r'^[A-Z]{3}-[A-Z ]+$',max_length=100)
+
 class CreateMastersArgs(DraftId):
     create_supplier: bool = Field(default=True)
     create_items: bool = Field(default=True)
+    unit_definitions:list[MasterUnit]=Field(default_factory=list,max_length=100)
 
 
 class NewPurchase(Empty):
@@ -66,6 +72,11 @@ class ReportQuery(Empty):
     from_date: str | None = Field(default=None,pattern=r'^\d{4}-\d{2}-\d{2}$')
     to_date: str | None = Field(default=None,pattern=r'^\d{4}-\d{2}-\d{2}$')
     as_of: str | None = Field(default=None,pattern=r'^\d{4}-\d{2}-\d{2}$')
+
+class SupplierHistoryQuery(Empty):
+    supplier:str=Field(min_length=1,max_length=200)
+    from_date:str|None=Field(default=None,pattern=r'^\d{4}-\d{2}-\d{2}$')
+    to_date:str|None=Field(default=None,pattern=r'^\d{4}-\d{2}-\d{2}$')
 
 
 class ReceiptLink(DraftRevision):
@@ -379,9 +390,19 @@ def registry(db, principal, company_id, state):
         result = await create_missing_masters_in_tally(
             db, principal, args['draft_id'],
             create_supplier=args.get('create_supplier', True),
-            create_items=args.get('create_items', True)
+            create_items=args.get('create_items', True),
+            unit_definitions=args.get('unit_definitions', [])
         )
-        return ToolResult(status='ok', data=result)
+        return ToolResult(status='needs_approval' if result.get('preview') else 'needs_input', data=result)
+
+    async def history(args):
+        from app.services.supplier_purchase_read import read as read_history
+        messages='\n'.join(state.get('messages',[]))
+        if args['supplier'].casefold() not in messages.casefold():raise HTTPException(422,'Supplier needs current message evidence.')
+        for field in ('from_date','to_date'):
+            if args.get(field) and args[field] not in messages:raise HTTPException(422,'History dates need explicit message evidence.')
+        result=await read_history(db,principal,company_id,**args)
+        return ToolResult(status='ok' if result.get('history_complete') else 'needs_input',data=result,verified=result.get('history_complete') is True)
 
     tools = [Tool('request_capability_group','Expose another permitted capability group when the task needs it.',CapabilityGroup,'read',authorize,expand),
         Tool('list_companies', 'List permitted companies; ask user when company is ambiguous.', Empty, 'read', authorize, companies)]
@@ -404,7 +425,8 @@ def registry(db, principal, company_id, state):
             Tool('link_receipt', 'Link exact full goods receipt to actual invoice through existing guards.', ReceiptLink, 'draft', authorize, link),
             Tool('evaluate_automation', 'Use existing policy/release gates; model confidence cannot authorise posting.', DraftId, 'write', authorize, auto),
             Tool('read_report', 'Read an allowlisted company report using existing rollout gates; do not invent period dates.', ReportQuery, 'read', authorize, report),
-            Tool('create_tally_masters', 'Create missing supplier ledger and stock items directly in Tally Prime from draft bill.', CreateMastersArgs, 'draft', authorize, create_masters),
+            Tool('read_supplier_purchases','Read native supplier purchase lines for a labelled period up to 180 days. No draft or write. Never claim no purchases after an incomplete read.',SupplierHistoryQuery,'read',authorize,history),
+            Tool('create_tally_masters', 'Prepare a create-only master preview. Never imports or approves; exact user confirmation and protocol 12 paired connector required.', CreateMastersArgs, 'draft', authorize, create_masters),
         ])
     if state.get('outcome') == 'answer':
         return [tool for tool in tools if tool.effect == 'read']

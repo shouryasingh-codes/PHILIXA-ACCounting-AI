@@ -49,6 +49,49 @@ class ModelTests(unittest.IsolatedAsyncioTestCase):
         post.assert_called_once();self.assertEqual(post.call_args.kwargs['max_attempts'],1)
         self.assertEqual(post.call_args.kwargs['timeout_seconds'],7);self.assertEqual(result.handler,'direct_reply')
 
+    async def test_supplier_data_contract_classifies_without_an_extra_call(self):
+        cases=[('What did we buy from Vendor A?', 'Vendor A', 'purchases','purchase_history_read'),
+               ('Vendor B ka ledger balance dikhao', 'Vendor B', 'profile','supplier_read'),
+               ('हमारे सभी सप्लायर दिखाओ', None, 'list','supplier_read'),
+               ('mai kisee maal kharid ta hu or kon se stock kharid ta hu kis se', None, 'list', 'supplier_read'),
+               ('mai kisee maal kharid ta hu or kon se stock kharid ta hu kis se', None, 'purchases', 'supplier_read'),
+               ('हम किस पार्टी से क्या सामान लेते हैं', None, 'list', 'supplier_read'),
+               ('TimeNet se kaunsa maal liya hai?', 'TimeNet', 'purchases', 'purchase_history_read'),
+               ('TimeNet se kaunsa maal liya hai?', 'TimeNet', 'list', 'purchase_history_read')]
+        for message,party,data,expected in cases:
+            with self.subTest(message=message,data=data):
+                wire=model.WireRoute(intent='supplier_query',party_name=party,
+                    supplier_question={'data':data,'quote':message},context_relation='continue_current')
+                with patch.object(model,'_post_json',return_value=self.response(wire.model_dump())) as post:
+                    decision,_=await model.classify(message,{'task_id':'a'*32},'b'*32)
+                self.assertEqual(decision.intent,expected)
+                self.assertEqual(decision.handler,'domain_read')
+                self.assertEqual(decision.party_name,party)
+                self.assertIsNone(decision.target_task_id)
+                self.assertFalse(decision.explicit_fields)
+                post.assert_called_once()
+
+    async def test_supplier_wire_requires_grounded_question_and_current_target(self):
+        variants=[
+            (model.WireRoute(intent='supplier_query',party_name='Vendor'), 'supplier_data_missing'),
+            (model.WireRoute(intent='supplier_query',party_name='Vendor',
+                supplier_question={'data':'purchases','quote':'not in message'}), 'supplier_question_ungrounded'),
+            (model.WireRoute(intent='purchase_history_read',party_name='Vendor'), 'legacy_supplier_wire_route'),
+            (model.WireRoute(intent='supplier_read',party_name='Vendor'), 'legacy_supplier_wire_route'),
+            (model.WireRoute(intent='help',supplier_question={'data':'list','quote':'Vendor'},
+                conversational_reply='Help'), 'unexpected_supplier_data')]
+        for wire,reason in variants:
+            with self.subTest(reason=reason):
+                with patch.object(model,'_post_json',return_value=self.response(wire.model_dump())) as post:
+                    with self.assertRaises(model.RoutingOutputError) as error:
+                        await model.classify('Vendor se kya kharida?',{},'a'*32)
+                self.assertEqual(error.exception.diagnostic[0]['type'],reason)
+                post.assert_called_once()
+        for party,data in [(None,'purchases'),('Vendor','list')]:
+            result=model.resolve(model.WireRoute(intent='supplier_query',party_name=party,
+                supplier_question={'data':data,'quote':'Vendor'}),{})
+            self.assertEqual(result.handler,'clarify')
+
     async def test_conversation_reply_comes_from_same_call_and_stays_out_of_domain(self):
         cases=[('tera naam kya hai','Mera naam Philixa hai.'),
                ('How are you different from a person?', 'I am an AI assistant, not a person.'),
@@ -62,8 +105,12 @@ class ModelTests(unittest.IsolatedAsyncioTestCase):
             post.assert_called_once()
         with self.assertRaises(ValueError):
             model.resolve(model.WireRoute(intent='smalltalk'),{})
-        with self.assertRaises(ValueError):
-            model.resolve(model.WireRoute(intent='stock_read',item_name='*',conversational_reply='Stock 50'),{})
+        # Domain replies are stripped by resolve, rather than used as stock facts.
+        # The source read remains mandatory even when the router emits stray prose.
+        stock=model.resolve(model.WireRoute(intent='stock_read',item_name='*',conversational_reply='Stock 50'),{})
+        self.assertIsNone(stock.conversational_reply)
+        self.assertEqual(stock.handler,'domain_read')
+        self.assertIsNone(stock.target_task_id)
 
     async def test_identity_reply_is_not_bound_to_supplier_or_task(self):
         context={'task_id':'a'*32,'can_continue':True,'choices':['Synthetic Supplier']}

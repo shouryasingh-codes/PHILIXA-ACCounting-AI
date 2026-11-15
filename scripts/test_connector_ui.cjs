@@ -168,7 +168,22 @@ async function flush(){for(let i=0;i<12;i++)await Promise.resolve();}
   form.listeners.submit({preventDefault(){}});
   assert.match(combined,/Bill baad mein\. Maal aa gaya\. Received date: 2026-10-02\. GST alag lagega/,'one submit carries all selected facts');
   assert(!walk(form).some(n=>n.type==='number'),'known rate is not asked again');
-  console.log('PASS: setup, status, reports, compact proposal, grouped facts and evidence-bound acceptance');
+  const masterTools=new Node();let masterClick,masterResult,masterState,masterRequests=0;
+  window.fetchWithAuth=async(url,options)=>{
+    assert.equal(url,'/api/v1/business/purchase-drafts/draft/masters-preview');
+    assert.equal(JSON.parse(options.body).revision,4);masterRequests++;
+    return {ok:true,json:async()=>({draft_id:'draft',response:'Master preview ready; no write',preview:{token:'master-action',can_confirm:true,lines:[],blockers:[]}})};
+  };
+  window.renderBusinessTally(masterTools,{task_id:'purchase-task',draft_id:'draft',proposal:{revision:4,content:{lines:[]},totals:{}},
+    purchase_assistant:{field:'party_name',revision:4,choices:[]},issues:[{kind:'identity',field:'party_name'}]},
+    {...callbacks,submit(){throw new Error('Master preview must not require a language-model command');},
+      toolButton(parent,label,fn){if(label==='Supplier ka preview')masterClick=fn;},
+      renderResult(parent,result){masterResult=result;},updateState(result){masterState=result;}});
+  const first=masterClick();await masterClick();await first;
+  assert.equal(masterRequests,1,'parallel clicks share one preparation');
+  assert.equal(masterResult.preview.token,'master-action');assert.equal(masterState.task_id,null,'master approval cannot inherit the purchase task identity');
+  assert.equal(masterState.proposal,null);
+  console.log('PASS: setup, scoped master preview without AI/approval, reports, grouped facts and evidence-bound acceptance');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 
 

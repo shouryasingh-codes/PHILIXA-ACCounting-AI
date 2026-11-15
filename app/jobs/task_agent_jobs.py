@@ -93,6 +93,9 @@ async def execute_agent_task(ctx, task_id, expected_revision=None):
         row.status = 'running'
         revision = row.revision
         state = copy.deepcopy(row.state)
+        from app.services.ai_engine_manager import get_active_engine
+        if not state.get('provider'):
+            state['provider']=await get_active_engine()
         state['task_id']=row.id
         state['company_id']=row.company_id
         state.pop('provider_retry_at',None)
@@ -148,14 +151,14 @@ async def execute_agent_task(ctx, task_id, expected_revision=None):
             used += sum((Decimal(r.telemetry.get('reserved_usd','0')) for r in routes),Decimal(0))
             from app.ai.groq_gateway import free_call_limit
             local_limit=free_call_limit()
-            if mode == 'free' and local_limit is not None and sum(bool(r.state.get('free_call')) for r in runs)+sum(bool(r.telemetry.get('free_call')) for r in routes) >= local_limit:
+            if state['provider']=='groq' and mode == 'free' and local_limit is not None and sum(bool(r.state.get('free_call')) for r in runs if r.state.get('provider','groq')=='groq')+sum(bool(r.telemetry.get('free_call')) for r in routes if r.telemetry.get('provider','groq')=='groq') >= local_limit:
                 from app.ai.groq_gateway import QuotaDeferred
                 raise QuotaDeferred('local_cap')
             if mode == 'paid' and used+reserve > cap:
                 raise ValueError('Agent daily budget exhausted')
             reservation_id=secrets.token_hex(16)
             db.add(AgentRun(id=reservation_id,task_id=task_id,revision=revision,
-                state={'reserved_usd':str(reserve),'free_call':mode=='free'},created_at=now()))
+                state={'provider':state['provider'],'reserved_usd':str(reserve),'free_call':mode=='free'},created_at=now()))
             await db.commit()
 
         async def model(current, schemas):

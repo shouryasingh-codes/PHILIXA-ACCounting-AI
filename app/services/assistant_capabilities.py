@@ -4,11 +4,11 @@ Keep tool names tied to the existing registry. Runtime permissions, connectivity
 feature gates and evidence are checked separately by domain services.
 """
 SUPPORTED_TOOL_NAMES = (
-    'list_companies', 'company_masters', 'read_stock', 'read_report',
+    'list_companies', 'company_masters', 'read_stock', 'read_report', 'read_supplier_purchases',
     'read_purchase_draft', 'create_purchase_draft', 'purchase_context',
     'check_purchase_tax', 'purchase_preview', 'receipt_preview',
     'read_bill_fields', 'document_status', 'list_documents', 'extract_document',
-    'link_receipt', 'evaluate_automation',
+    'link_receipt', 'evaluate_automation', 'create_tally_masters',
 )
 
 

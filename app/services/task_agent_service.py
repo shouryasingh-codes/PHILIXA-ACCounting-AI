@@ -111,7 +111,7 @@ def view(row):
     return dict(execution_stage=stage,progress_active=active_execution,**presentation, document_task=bool(state.get('attachment_document_ids')), attachment_sources=state.get('attachment_sources',[]), selections=public_offers(row),
         details_unknown=bool(state.get('details_unknown')),
         wait_reason=state.get('wait_reason'),retry_at=state.get('provider_retry_at'),auto_resume_until=state.get('auto_resume_until'),
-        can_resume=row.status=='needs_input',task_id=row.id, task_revision=row.revision, revision=row.revision, status=row.status,
+        can_resume=row.status=='needs_input',task_id=row.id, task_revision=row.revision, revision=row.revision, status=row.status, provider=state.get('provider'),
         response='Task saved hai. Worker ki queue mein hai; processing abhi shuru nahi hui.' if row.status=='queued' and not state.get('action_id') else presentation_summary if row.status=='needs_input' or (state.get('outcome')=='answer' and presentation.get('stock_results') and row.status=='completed') else state.get('summary','Task saved.'),
         draft_id=state.get('draft_id'), action_id=state.get('action_id'),
         issues=[*latest.get('issues',[]),*state.get('issues',[])], updated_at=row.updated_at.isoformat())
@@ -196,6 +196,14 @@ async def read(db, principal, ident):
             raise HTTPException(409,'Task action binding changed.')
         status = {'queued':'queued','submitting':'verification_pending','verification_pending':'verification_pending',
             'verified':'completed','failed':'failed','needs_review':'needs_input','cancelled':'cancelled','expired':'needs_input'}.get(action.status)
+        if action.payload.get('operation')=='masters_create' and action.status=='verified':
+            from app.services.tally_sync import action_result
+            data=action_result(action)
+            state=copy.deepcopy(row.state);state.pop('action_id',None)
+            state.update(summary=data['response'],observations=[*state.get('observations',[]),{'status':'needs_input','data':data,'verified':False}])
+            row.state=state;row.status='needs_input';await db.commit()
+            from app.services.task_queue_health import annotate
+            return await annotate(view(row))
         if status and row.status != status:
             from app.services.tally_sync import action_result
             row.status = status
@@ -218,7 +226,16 @@ async def approve(db, principal, ident, request):
     if row.state.get('draft_id'):
         draft = await drafts.scoped_draft(db,principal,row.state['draft_id'])
         if draft.action_id != request.token:
-            raise HTTPException(409,'Draft preview changed.')
+            from app.models.tally import TallyAction
+            action=await db.get(TallyAction,request.token)
+            if not action or action.payload.get('operation')!='masters_create' or (action.preconditions or {}).get('master_draft',{}).get('id')!=draft.id:
+                raise HTTPException(409,'Draft preview changed.')
+            from app.services.master_creation_service import guard
+            try:await guard(db,action)
+            except Exception as exc:
+                from app.services.tally_connector import TallyError
+                if isinstance(exc,TallyError):raise HTTPException(409,str(exc))
+                raise
     await db.commit()  # Existing action service owns posting lock and guards.
     from app.services.tally_business import confirm_action
     await confirm_action(db,principal,request.token,approve=request.approve,
@@ -239,8 +256,8 @@ async def metrics(db,principal,ident):
     quota_events=[r.state['quota_wait'] for r in runs if 'quota_wait' in r.state]
     return {'task_id':ident,'status':row.status,'user_messages':len(row.state.get('messages',[])),
         'model_responses_with_usage':len(usage),'prompt_tokens':prompt,'completion_tokens':output,
-        'estimated_model_cost_usd':str(estimated),'reserved_usd':str(reserved),
-        'cost_basis':'GPT-OSS 20B list-price estimate, 2026-11-02; not an invoice or actual free-tier charge',
+        'estimated_model_cost_usd':str(estimated) if all(u.get('provider','groq')=='groq' for u in usage) else None,'reserved_usd':str(reserved),
+        'cost_basis':'GPT-OSS 20B list-price estimate, 2026-11-02; not an invoice or actual free-tier charge' if all(u.get('provider','groq')=='groq' for u in usage) else 'Selected-provider monetary cost unknown; token usage is recorded, not priced as GPT-OSS.',
         'coverage':'Agent-decision usage only; extraction has separate telemetry. Uncertain calls retain their reservation.',
         'gateway_requests':len(requests),'gateway_estimated_tokens':sum(r.reserved_tokens for r in requests),
         'gateway_charged_tokens':sum(r.charged_tokens for r in requests),
@@ -249,7 +266,7 @@ async def metrics(db,principal,ident):
         'quota_wait_events':quota_events,'time_savings_verified':False}
 
 
-async def create(db, principal, request, *, routing_seed=None):
+async def create(db, principal, request, *, routing_seed=None, provider=None):
     enabled()
     from app.services.tally_business import admin
     admin(principal)
@@ -271,11 +288,14 @@ async def create(db, principal, request, *, routing_seed=None):
         if len(permitted) == 1:
             company_id = permitted[0]['id']
     stamp = now()
+    from app.services.ai_engine_manager import get_active_engine
+    provider=provider or await get_active_engine()
+    if provider not in ('groq','gemini'):raise HTTPException(503,'Selected AI provider unavailable.')
     company_identity=(await drafts.company_for(db,principal,company_id)).identity if company_id else None
     await db.execute(insert(AgentTask).values(id=secrets.token_hex(16),
         organization_id=principal.organization_id, user_id=principal.user_id,
         company_id=company_id, request_id=request.request_id, request_hash=digest,
-        revision=0, status='queued', state=dict(messages=[request.message],
+        revision=0, status='queued', state=dict(messages=[request.message],provider=provider,
         draft_id=request.draft_id,company_identity=company_identity, outcome=request.outcome, session_id=principal.session_id, executions=[], observations=[], summary='Task queued.',routing_first_step=routing_seed),
         created_at=stamp, updated_at=stamp).on_conflict_do_nothing())
     row = await db.scalar(select(AgentTask).where(AgentTask.organization_id == principal.organization_id,

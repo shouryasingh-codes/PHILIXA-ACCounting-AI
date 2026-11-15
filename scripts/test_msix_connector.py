@@ -65,6 +65,13 @@ class MigrationTests(unittest.TestCase):
 
 
 class PackageTests(unittest.TestCase):
+    def test_msix_build_uses_runtime_release_identity(self):
+        script = (Path(__file__).resolve().parents[1]/'helper/build-msix.ps1').read_text()
+        self.assertNotIn('3.7.1', script)
+        self.assertNotIn('protocol=10', script)
+        self.assertIn('$release.version', script)
+        self.assertIn('$release.protocol', script)
+
     def test_retirement_requires_enabled_startup_and_migration(self):
         from helper.legacy_retirement import retire_after_verified_read
         with patch('helper.legacy_retirement.subprocess.run') as run:
@@ -80,7 +87,8 @@ class PackageTests(unittest.TestCase):
                             product_id='9ABCDEFGHIJK',publisher_display_name='TestOwner'))
         root=ET.fromstring(xml)
         self.assertIn('10.0.19045.0',xml)
-        self.assertIn('3.7.1.0',xml)
+        from helper.runtime import VERSION
+        self.assertEqual(root.find('{http://schemas.microsoft.com/appx/manifest/foundation/windows10}Identity').attrib['Version'], VERSION+'.0')
         self.assertIn('windows.startupTask',xml)
         self.assertIn('runFullTrust',xml)
         self.assertNotIn('allowElevation',xml)

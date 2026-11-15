@@ -52,7 +52,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             import logging
             logging.getLogger(__name__).warning('Routing initialization unavailable; semantic requests fail closed.')
-    async with core_lifespan(app):
+    from app.services.ai_engine_manager import transport_lifespan
+    async with core_lifespan(app), transport_lifespan():
         yield
 
 

@@ -4,10 +4,15 @@ $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
 $python = Join-Path $root '.helper-build\Scripts\python.exe'
-$output = Join-Path $root 'data\connector-candidates\msix-3.7.1'
 # Validate identity before installing dependencies or building anything.
 & $python -c 'import json,sys; from helper.msix_manifest import manifest; manifest(json.load(open(sys.argv[1],encoding="utf-8")))' $IdentityFile
 if ($LASTEXITCODE -ne 0) { throw 'Verified Partner Center metadata missing; MSIX withheld' }
+$releaseJson = & $python -c 'import json; from helper.runtime import VERSION; from app.services.tally_sync_protocol import PROTOCOL_VERSION; print(json.dumps({"version":VERSION,"protocol":PROTOCOL_VERSION}))'
+if ($LASTEXITCODE -ne 0) { throw 'Connector release metadata unavailable; MSIX withheld' }
+$release = $releaseJson | ConvertFrom-Json
+if ($release.version -notmatch '^\d+\.\d+\.\d+$' -or [int]$release.protocol -lt 1) { throw 'Invalid connector release metadata' }
+$output = Join-Path $root "data\connector-candidates\msix-$($release.version)"
+$packageFile = Join-Path $output "PhilixaConnect-$($release.version).msix"
 $sdk = Get-ChildItem -LiteralPath "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Directory |
     Sort-Object Name -Descending | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'x64\makeappx.exe') } |
     Select-Object -First 1
@@ -36,13 +41,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Package asset generation failed' }
 & $python -m helper.msix_licenses "$payload\Licences"
 if ($LASTEXITCODE -ne 0) { throw 'Dependency licence collection failed' }
 $makeappx = Join-Path $sdk.FullName 'x64\makeappx.exe'
-& $makeappx pack /d $payload /p "$output\PhilixaConnect-3.7.1.msix" /o
+& $makeappx pack /d $payload /p $packageFile /o
 if ($LASTEXITCODE -ne 0) { throw 'MakeAppx validation failed; release withheld' }
 $files = Get-ChildItem -LiteralPath $payload -File -Recurse | ForEach-Object {
     @{path=$_.FullName.Substring($payload.Length+1);sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
 }
 $dependencies = & $python -m pip freeze
-@{version='3.7.1';protocol=10;published=$false;signed=$false;runtime_acceptance='pending';files=@($files);dependencies=@($dependencies);package_sha256=(Get-FileHash -LiteralPath "$output\PhilixaConnect-3.7.1.msix" -Algorithm SHA256).Hash} |
+@{version=$release.version;protocol=$release.protocol;published=$false;signed=$false;runtime_acceptance='pending';files=@($files);dependencies=@($dependencies);package_sha256=(Get-FileHash -LiteralPath $packageFile -Algorithm SHA256).Hash} |
     ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output\build-evidence.json"
 Write-Output 'Unsigned Store submission candidate only. Store signing and Windows matrix acceptance remain required.'
 } finally { Pop-Location }

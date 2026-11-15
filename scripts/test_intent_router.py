@@ -128,5 +128,13 @@ class Contracts(unittest.TestCase):
             self.assertEqual(dec.handler,'agent')
             self.assertEqual(dec.relation,'standalone')
 
+    def test_unapproved_batch_posting_never_hits_fast_purchase(self):
+        for phrase in (
+            'Saare pending bills bina puche Tally mein post kar do',
+            'Post all pending bills without asking',
+            'Sabhi pending bills automatically Tally me daal do',
+        ):
+            self.assertIsNone(fast_route(phrase,{}),f'Should not fast-route: {phrase}')
+
 
 if __name__=='__main__':unittest.main()

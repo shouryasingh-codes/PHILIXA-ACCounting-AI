@@ -28,8 +28,11 @@ vm.runInNewContext(fs.readFileSync('app/web/business-chat-attachments.js','utf8'
  await assert.rejects(()=>controller.stage('check bill','other'),/Workspace changed/);
  controller.clear();assert(!controller.hasFiles);assert.equal(urls.size,0);
  const cards=new Element();window.renderChatBillSources(cards,{attachment_sources:[{document_id:'doc',filename:'<script>bad</script>',drafts:[]}]});
- assert.equal(cards.children[0].children[0].textContent,'<script>bad</script>');
- const original=cards.children[0].children[1];await original.click();assert.equal(urls.size,1);assert(body.children.at(-1).open);
+ // A decorative file icon is allowed; the untrusted name must remain literal text.
+ assert(cards.children[0].children[0].textContent.endsWith('<script>bad</script>'));
+ assert.equal(cards.children[0].children[0].children.length,0,'filename cannot create executable markup');
+ const findText=(root,text)=>root.textContent===text?root:root.children.map(node=>findText(node,text)).find(Boolean);
+ const original=findText(cards,'View original');await original.click();assert.equal(urls.size,1);assert(body.children.at(-1).open);
  window.closeChatBillPreviews();assert.equal(urls.size,0);assert(body.children.at(-1).removed);
  delayOriginal=true;const pending=original.click();window.closeChatBillPreviews();releaseOriginal();await pending;
  assert.equal(urls.size,0,'A response arriving after sign-out cannot open a private preview');

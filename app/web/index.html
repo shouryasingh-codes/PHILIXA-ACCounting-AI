@@ -1153,7 +1153,21 @@
       <div class="business-sidebar-bottom"><button id="businessConnectionBtn" type="button">Connect your software <span aria-hidden="true">↗</span></button><button id="businessSignOut" type="button">Sign out</button></div>
     </aside>
     <main class="business-main">
-      <header class="business-header"><div><button id="businessMobileMenu" class="business-mobile-menu" type="button" aria-label="Open chat menu" aria-expanded="false">☰</button><span class="business-mobile-brand">philixa.</span><span class="business-header-name">Business Assistant</span><span class="business-preview">Voice chat</span></div><button id="businessConnectionTop" class="business-connection" type="button"><span class="business-status-dot"></span> No software connected</button></header>
+      <header class="business-header">
+        <div>
+          <button id="businessMobileMenu" class="business-mobile-menu" type="button" aria-label="Open chat menu" aria-expanded="false">☰</button>
+          <span class="business-mobile-brand">philixa.</span>
+          <span class="business-header-name">Business Assistant</span>
+          <span class="business-preview">Voice chat</span>
+        </div>
+        <div class="business-header-right">
+          <div class="ai-engine-toggle" id="aiEngineToggle" title="Switch AI Model (⚡ Groq / ✨ Gemini)">
+            <button type="button" class="ai-engine-btn active" data-engine="groq" id="engineGroqBtn">⚡ Groq</button>
+            <button type="button" class="ai-engine-btn" data-engine="gemini" id="engineGeminiBtn">✨ Gemini</button>
+          </div>
+          <button id="businessConnectionTop" class="business-connection" type="button"><span class="business-status-dot"></span> No software connected</button>
+        </div>
+      </header>
       <div class="business-scroll" id="businessScroll">
         <section class="business-welcome" id="businessWelcome">
           <div class="business-greeting">A little less work. A lot more clarity.</div>
@@ -2224,6 +2238,6 @@
       document.body.appendChild(bd);
     }
   </script>
-  <script src="/static/business-voice.js?v=1"></script><script src="/static/business-tally.js?v=48"></script><script src="/static/business-chat-store.js?v=3"></script><script src="/static/business-chat-attachments.js?v=2"></script><script src="/static/business-chat.js?v=30"></script><script src="/static/bill-review-meter.js?v=1"></script><script src="/static/business-drafts.js?v=19"></script><script src="/static/business-documents.js?v=12"></script>
+  <script src="/static/business-voice.js?v=1"></script><script src="/static/business-tally.js?v=49"></script><script src="/static/business-chat-store.js?v=3"></script><script src="/static/business-chat-attachments.js?v=2"></script><script src="/static/business-chat.js?v=32"></script><script src="/static/bill-review-meter.js?v=1"></script><script src="/static/business-drafts.js?v=20"></script><script src="/static/business-documents.js?v=12"></script>
 </body>
 </html>

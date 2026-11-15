@@ -77,9 +77,12 @@ async def prepare(db,principal,row):
         party=exact(catalog['ledgers'],content.get('party_name'))
         if party is not None:
             try:
-                detail=gst.effective(party.findall('LEDGSTREGDETAILS.LIST'),stamp)
+                history=party.findall('LEDGSTREGDETAILS.LIST')
+                detail=gst.effective(history,stamp)
+                if history and detail is None:raise TallyError('Supplier GST registration missing for invoice date.')
                 source=detail if detail is not None else party
-                number=value(source,'GSTIN') or value(party,'PARTYGSTIN')
+                if value(source,'GSTREGISTRATIONTYPE').casefold()!='regular':raise TallyError('Supplier registration requires review.')
+                number=value(source,'GSTIN') if history else value(party,'PARTYGSTIN')
                 gst.gstin_state(number)
             except TallyError:
                 # Optional enrichment must not abort a saved conversation. Do not

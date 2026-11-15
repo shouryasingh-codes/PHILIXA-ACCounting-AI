@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.services.purchase_message import Mention, MessageFields, grounded
 
-VERSION = 'intent-router-v3.4'
+VERSION = 'intent-router-v3.7'
 
 
 class ReportDate(BaseModel):
@@ -17,7 +17,7 @@ class ReportDate(BaseModel):
 class RouteDecision(BaseModel):
     model_config=ConfigDict(extra='forbid')
     intent: Literal['help','greeting','smalltalk','stock_read','report_read','existing_read','purchase','bill_processing','document_question',
-                    'task_reply','correction','unsupported','clarification','compound']
+                    'task_reply','correction','unsupported','clarification','compound','supplier_read','purchase_history_read']
     relation: Literal['standalone','continue_current','switch_topic','unclear']
     handler: Literal['direct_reply','domain_read','domain_continuation','domain_document','agent','clarify']
     reported_context_relation: Literal['standalone','continue_current','switch_topic','unclear'] | None = None
@@ -25,6 +25,7 @@ class RouteDecision(BaseModel):
     target_draft_id: str | None = Field(default=None,pattern=r'^[a-f0-9]{32}$')
     document_fields: list[Literal['party_name','invoice_number','entry_date','invoice_total','lines','expected_taxes']] = Field(default_factory=list,max_length=6)
     item_name: str | None = Field(default=None,max_length=200)
+    party_name: str | None = Field(default=None,max_length=200)
     report: Literal['get_purchase_register','get_sales_register','get_bills_receivable',
                     'get_bills_payable','get_receipts_and_payments','get_cash_flow'] | None = None
     explicit_fields: list[Mention] = Field(default_factory=list,max_length=100)
@@ -42,11 +43,13 @@ class RouteDecision(BaseModel):
             raise ValueError('Conversational reply required')
         legal={'help':{'direct_reply'},'greeting':{'direct_reply'},'smalltalk':{'direct_reply'},
                'stock_read':{'domain_read','clarify'},'report_read':{'domain_read','clarify'},
+               'supplier_read':{'domain_read','clarify'},'purchase_history_read':{'domain_read','clarify'},
                'existing_read':{'domain_read'},
                'purchase':{'agent','clarify'},'bill_processing':{'agent','domain_continuation','clarify'},'document_question':{'domain_document','clarify'},
                'task_reply':{'domain_continuation','clarify'},'correction':{'domain_continuation','clarify'},
                'unsupported':{'clarify'},'clarification':{'clarify'},'compound':{'agent','clarify'}}
         if self.handler not in legal[self.intent]:raise ValueError('Illegal route combination')
+        if self.party_name and self.intent not in ('supplier_read','purchase_history_read'):raise ValueError('Unexpected party name')
         if self.target_draft_id and self.handler!='domain_document' and not (self.intent=='bill_processing' and self.handler=='domain_continuation'):raise ValueError('Unexpected document target')
         if self.document_fields and self.intent!='document_question':raise ValueError('Unexpected document fields')
         if self.handler=='domain_document' and not self.document_fields:raise ValueError('Document fields required')
@@ -59,7 +62,7 @@ class RouteDecision(BaseModel):
             raise ValueError('Missing report')
         if self.explicit_fields and self.intent not in ('purchase','correction','task_reply'):
             raise ValueError('Unexpected accounting fields')
-        if self.report_dates and self.intent!='report_read':raise ValueError('Unexpected report dates')
+        if self.report_dates and self.intent not in ('report_read','purchase_history_read'):raise ValueError('Unexpected report dates')
         if len({d.field for d in self.report_dates})!=len(self.report_dates):raise ValueError('Duplicate report date')
         return self
 
@@ -78,14 +81,16 @@ def validate_evidence(decision, message, context):
         raise ValueError('Correction needs current draft')
     if decision.item_name and decision.item_name!='*' and decision.item_name.casefold() not in message.casefold():
         raise ValueError('Item query lacks message evidence')
+    if decision.party_name and decision.party_name.casefold() not in message.casefold():
+        raise ValueError('Supplier query lacks message evidence')
     if decision.explicit_fields:
         grounded(message,MessageFields(updates=decision.explicit_fields,unsupported_reason=None))
     for date in decision.report_dates:
         grounded(message,MessageFields(updates=[Mention(path='entry_date',value=date.value,quote=date.quote)],unsupported_reason=None))
     dates={d.field:d.value for d in decision.report_dates}
     if dates.get('from_date','')>dates.get('to_date','9999'):raise ValueError('Invalid report range')
-    if decision.intent=='report_read' and decision.handler=='domain_read':
-        temporal=re.search(r'\b(?:today|yesterday|month|year|week|between|from|since|aaj|kal|mahine|saal|pichhle|pichle|january|february|march|april|may|june|july|august|september|october|november|december)\b|\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|आज|कल|महीन|साल',message,re.I)
+    if decision.intent in ('report_read','purchase_history_read') and decision.handler=='domain_read':
+        temporal=re.search(r'\b(?:today|yesterday|month|year|week|between|since|aaj|kal|mahine|saal|pichhle|pichle|january|february|march|april|may|june|july|august|september|october|november|december)\b|\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|आज|कल|महीन|साल',message,re.I)
         if temporal and not dates:raise ValueError('Requested report period unresolved')
     return decision
 
@@ -134,6 +139,8 @@ def is_bill_entry_intent(message: str) -> bool:
         return False
     if re.search(r'\bprepare\b', norm):
         return False
+    if re.search(r'\b(?:bina\s+puch\w*|without\s+ask\w*|saare|sare|sabhi|all\s+pending|pending\s+bills?|auto(?:matic|matically)?|khud\s+(?:hi|se))\b', norm):
+        return False
     if re.search(r'\d+\s*(?:bags?|pcs?|nos?|kg|ton|box|boxes|rate|\/)', norm) or re.search(r'\brate\s*\d+', norm):
         return False
     has_entry_action = bool(re.search(r'\b(?:entry|enter|record|chadha(?:do|de|na)?|daal(?:do|de|na)?|punch(?:ing)?|post(?:ing)?|process(?:ing)?|maar(?:do|de|o)?|mar(?:do|de|o)?)\b', norm))
@@ -155,6 +162,8 @@ def fast_route(message,context,*,selection=False,refresh=False):
     text=message.strip().casefold().rstrip('?!.।').strip()
     if text in {'hi','hii','hello','hey','hyy','namaste','नमस्ते'}:
         return RouteDecision(intent='greeting',relation='switch_topic' if context.get('task_id') else 'standalone',handler='direct_reply',reason='greeting')
+    # Free-form supplier/history/purchase meaning belongs to the semantic
+    # classifier. A supplier word alone cannot select a supplier-list operation.
     if re.fullmatch(r'(?:stock\s+(?:kitn[ae]\s+hai|batao?|dikhao)|(?:saare|sare|saara|sara|all)\s+(?:items?\s+ka\s+)?stock\s+(?:batao?|dikhao)|(?:show|check)\s+(?:all\s+)?(?:stock|inventory)|सभी सामान का स्टॉक बताओ)',text):
         return RouteDecision(intent='stock_read',relation='switch_topic' if context.get('task_id') else 'standalone',
                              handler='domain_read',item_name='*',reason='clear_stock_read')

@@ -1,5 +1,6 @@
 """Authenticated compatibility API; graph nodes execute reusable business services."""
 from fastapi import APIRouter, Depends, Query, HTTPException
+from typing import Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import CurrentPrincipal
 from app.database.session import get_db
@@ -173,6 +174,20 @@ async def bill_audit(draft_id: str, principal: CurrentPrincipal, db: AsyncSessio
 async def preview_bill_draft(draft_id: str, request: drafts.DraftPreview, principal: CurrentPrincipal, db: AsyncSession = Depends(get_db)):
     return await drafts.preview_draft(db,principal,draft_id,request)
 
+from app.services.task_agent_tools import MasterUnit
+class MastersPreviewRequest(BaseModel):
+    revision:int=Field(ge=0)
+    create_supplier:bool=True
+    create_items:bool=True
+    unit_definitions:list[MasterUnit]=Field(default_factory=list,max_length=100)
+
+@router.post('/purchase-drafts/{draft_id}/masters-preview')
+async def preview_bill_masters(draft_id:str,request:MastersPreviewRequest,principal:CurrentPrincipal,db:AsyncSession=Depends(get_db)):
+    row=await drafts.scoped_draft(db,principal,draft_id,lock=True)
+    if row.revision!=request.revision:raise HTTPException(409,'Draft changed; review current details.')
+    from app.services.master_creation_service import prepare
+    return await prepare(db,principal,draft_id,request.create_supplier,request.create_items,[u.model_dump() for u in request.unit_definitions])
+
 @router.get('/conversations')
 async def list_chats(principal: CurrentPrincipal, db: AsyncSession = Depends(get_db)):
     return await conversations.list_conversations(db,principal)
@@ -207,6 +222,9 @@ async def command(request: CommandRequest, principal: CurrentPrincipal, db: Asyn
     import os
     from app.services import business_router
     if business_router.frontdoor_enabled():
+        if not request.request_id:
+            import secrets
+            request = request.model_copy(update={'request_id': secrets.token_hex(16)})
         return await business_router.route(db,principal,request)
     from app.services.business_help import help_answer, reply
     answer = help_answer(request.text) if not request.selection and not request.context_refresh else None
@@ -253,3 +271,21 @@ async def tax_profile_save(company_id:str,request:purchase_tax.TaxProfileSave,pr
 @router.get('/purchase-drafts/{draft_id}/tax-check')
 async def tax_check(draft_id:str,principal:CurrentPrincipal,db:AsyncSession=Depends(get_db)):
     return await purchase_tax.tax_check(db,principal,draft_id)
+
+class AIEngineRequest(BaseModel):
+    engine: Literal['groq','gemini']
+
+@router.get('/ai-engine')
+async def get_ai_engine(principal: CurrentPrincipal):
+    from app.services.ai_engine_manager import get_active_engine,EngineRequestError
+    try:engine = await get_active_engine()
+    except EngineRequestError:raise HTTPException(503,'Saved AI selection abhi available nahi hai.') from None
+    return {"engine": engine, "available": ["groq", "gemini"]}
+
+@router.post('/ai-engine')
+async def set_ai_engine(request: AIEngineRequest, principal: CurrentPrincipal):
+    from app.services.ai_engine_manager import set_active_engine
+    from app.services.ai_engine_manager import EngineRequestError
+    try:engine = await set_active_engine(request.engine)
+    except EngineRequestError:raise HTTPException(503,'AI selection save nahi hui; previous selection retained.') from None
+    return {"engine": engine, "status": "switched"}

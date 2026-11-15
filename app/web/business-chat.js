@@ -31,11 +31,69 @@
     try{await attachments.pick(activeScope);}catch(error){status.textContent=error.message;}
   });
   let taskAgentEnabled=false, intentRouterEnabled=false;
-  window.fetchWithAuth('/api/v1/business/task-capabilities').then(r=>r.ok?r.json():{}).then(d=>{
-    taskAgentEnabled=d.enabled===true;
-    attachments?.setEnabled(d.chat_attachments_enabled===true);
-    intentRouterEnabled=d.router_enabled===true;
-  }).catch(()=>{});
+  async function loadTaskCapabilities() {
+    try {
+      const r = await window.fetchWithAuth('/api/v1/business/task-capabilities');
+      if (r && r.ok) {
+        const d = await r.json();
+        taskAgentEnabled = d.enabled === true;
+        attachments?.setEnabled(d.chat_attachments_enabled === true);
+        intentRouterEnabled = d.router_enabled === true;
+      }
+    } catch (_) {}
+  }
+  loadTaskCapabilities();
+
+  // AI Engine Switcher (Groq <-> Gemini)
+  const engineGroqBtn = document.getElementById('engineGroqBtn');
+  const engineGeminiBtn = document.getElementById('engineGeminiBtn');
+
+  function updateEngineUI(engine) {
+    if (engine === 'gemini') {
+      engineGeminiBtn?.classList.add('active');
+      engineGroqBtn?.classList.remove('active');
+    } else {
+      engineGroqBtn?.classList.add('active');
+      engineGeminiBtn?.classList.remove('active');
+    }
+  }
+
+  async function loadActiveEngine() {
+    try {
+      const res = await window.fetchWithAuth('/api/v1/business/ai-engine');
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data?.engine) updateEngineUI(data.engine);
+      }
+    } catch (_) {}
+  }
+
+  async function switchEngine(engine) {
+    engineGroqBtn.disabled = true;
+    engineGeminiBtn.disabled = true;
+    try {
+      const res = await window.fetchWithAuth('/api/v1/business/ai-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ engine })
+      });
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data?.engine) updateEngineUI(data.engine);
+      } else { await loadActiveEngine(); }
+    } catch (e) {
+      console.warn('Engine switch error:', e);
+      await loadActiveEngine();
+    } finally {
+      engineGroqBtn.disabled = false;
+      engineGeminiBtn.disabled = false;
+    }
+  }
+
+  engineGroqBtn?.addEventListener('click', () => switchEngine('groq'));
+  engineGeminiBtn?.addEventListener('click', () => switchEngine('gemini'));
+  window.addEventListener('business-auth-ready', () => { loadActiveEngine(); loadTaskCapabilities(); });
+  loadActiveEngine();
   const taskPolls=new WeakMap();
   function watchAgentTask(node,data,originalText){
     if(!data.task_id||!['queued','running','waiting_context','verification_pending'].includes(data.status))return;
@@ -270,6 +328,7 @@
     text = text.trim();
     if(attachments?.hasFiles&&!busy&&!loadingChat&&!root.inert){await submitAttachments(text);return;}
     if (!text || busy || loadingChat || root.inert) return;
+    if (!intentRouterEnabled && !taskAgentEnabled) await loadTaskCapabilities();
     const lastAssistant=[...transcript].reverse().find(m=>m.role==='assistant');
     const newTopic=/\b(?:stock\s+(?:kitna|check|report|dikha)|reports?(?:\s|$)|customers?(?:\s|$)|supplier\s+list|new purchase|nayi purchase|purchase\s+(?:kar|ki|entry)|kharid\w*|khareed\w*|bank\s|payment\s|sales?\s)|स्टॉक|रिपोर्ट|खरीद/i.test(text);
     const taskTurn=command.task_id?{data:{task_id:command.task_id,task_revision:command.expected_revision}}:lastAssistant?.data?.task_id?lastAssistant:[...transcript].reverse().find(m=>m.role==='assistant'&&m.data?.task_id);
@@ -290,7 +349,7 @@
         body: JSON.stringify(pending?(pending.resume?{resume:true}:{revision:pending.revision,expected_revision:pending.revision,field:pending.field,answer:text,message:text,
           request_id:window.crypto.randomUUID(),evidence_version:pending.evidence_version||lastAssistant?.data?.evidence_version,
           accept_suggestions:!!pending.accept_suggestions,prepare_preview:!!pending.prepare_preview}):{ text, conversation_history: history.filter(turn=>turn.content?.trim()).slice(-10), ...command,
-          ...(intentRouterEnabled||taskAgentEnabled||agentTask?{request_id:window.crypto.randomUUID()}:{}),
+          request_id: command.request_id || window.crypto.randomUUID(),
           ...(agentTask?{task_id:agentTask.task_id,expected_revision:agentTask.task_revision}:intentRouterEnabled&&taskTurn?.data?.task_id?{candidate_task_id:taskTurn.data.task_id}:{}),
           ...(intentRouterEnabled&&/^[a-f0-9]{32}$/.test(conversationId||'')?{conversation_id:conversationId,conversation_revision:conversationRevision}:{}),
           fields:{...(command.fields||{}),...(/^[a-f0-9]{32}$/.test(conversationId||'')?{purchase_context:conversationId}:{})} })

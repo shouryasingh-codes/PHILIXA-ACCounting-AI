@@ -62,8 +62,19 @@ async def recover_bill_documents(ctx):
     await recover_agent_tasks(ctx)
 
 
-async def startup(ctx):await recover_bill_documents(ctx)
-async def shutdown(ctx):await async_engine.dispose()
+async def startup(ctx):
+    from app.services.ai_engine_manager import start_transport,close_transport
+    await start_transport()
+    try:await recover_bill_documents(ctx)
+    except BaseException:
+        await close_transport()
+        raise
+
+
+async def shutdown(ctx):
+    from app.services.ai_engine_manager import close_transport
+    try:await close_transport()
+    finally:await async_engine.dispose()
 
 
 from app.services.invoice_extraction_jobs import extract_bill_document

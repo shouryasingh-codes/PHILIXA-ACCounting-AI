@@ -209,7 +209,7 @@ async def helper_status(principal: CurrentPrincipal, db: AsyncSession = Depends(
         online = bool(device and await redis.exists('tally:online:' + device.id))
         protocol=None
         if device:
-            for version in range(11,1,-1):
+            for version in range(13,1,-1):
                 if await redis.exists(f'tally:v{version}online:'+device.id):
                     protocol=str(version);break
             if protocol is None:protocol=await redis.get('tally:protocol:'+device.id)
@@ -226,19 +226,19 @@ async def helper_status(principal: CurrentPrincipal, db: AsyncSession = Depends(
             'company_health':company_health,'diagnostics_update_required':bool(device and online and not diagnostics),
             'paired': bool(device), 'online': online, 'can_configure': principal.role in ('owner','admin'),
             'mode': 'paired-helper' if device else 'unpaired', 'device_status': 'online' if online else 'offline',
-            'read_capabilities': ['company_stock']+(['purchase_history'] if protocol in ('10','11') else []),
+            'read_capabilities': ['company_stock']+(['purchase_history'] if protocol in ('10','11','12') else []),
             'protocol_version':int(protocol) if protocol and str(protocol).isdigit() else 1,
-            'helper_update_required':bool(device and online and protocol not in ('2','3','4','5','6','7','8','9','10','11')),
-            'count_helper_update_required':bool(device and online and protocol not in ('3','4','5','6','7','8','9','10','11')),
-            'customer_ledger_capable':bool(device and online and protocol in ('6','7','8','9','10','11')),
-            'customer_ledger_update_required':bool(device and protocol not in ('6','7','8','9','10','11')),
-            'gst_purchase_capable':bool(device and online and protocol in ('8','9','10','11')),
-            'gst_purchase_update_required':bool(device and protocol not in ('8','9','10','11')),
-            'multi_purchase_capable':bool(device and online and protocol in ('7','8','9','10','11')),
-            'multi_purchase_update_required':bool(device and protocol not in ('7','8','9','10','11')),
-            'purchase_history_capable':bool(device and online and protocol in ('10','11')),
-            'purchase_history_update_required':bool(device and protocol not in ('10','11')),
-            'goods_receipt_capable':bool(device and online and protocol=='11'),
+            'helper_update_required':bool(device and online and protocol not in ('2','3','4','5','6','7','8','9','10','11','12')),
+            'count_helper_update_required':bool(device and online and protocol not in ('3','4','5','6','7','8','9','10','11','12')),
+            'customer_ledger_capable':bool(device and online and protocol in ('6','7','8','9','10','11','12')),
+            'customer_ledger_update_required':bool(device and protocol not in ('6','7','8','9','10','11','12')),
+            'gst_purchase_capable':bool(device and online and protocol in ('8','9','10','11','12')),
+            'gst_purchase_update_required':bool(device and protocol not in ('8','9','10','11','12')),
+            'multi_purchase_capable':bool(device and online and protocol in ('7','8','9','10','11','12')),
+            'multi_purchase_update_required':bool(device and protocol not in ('7','8','9','10','11','12')),
+            'purchase_history_capable':bool(device and online and protocol in ('10','11','12')),
+            'purchase_history_update_required':bool(device and protocol not in ('10','11','12')),
+            'goods_receipt_capable':bool(device and online and protocol in ('11','12')),
             'distribution': approved_distribution(),
             'installer_url': os.getenv('PHILIXA_CONNECT_INSTALLER_URL') or ('/api/v1/integrations/tally/helper/download?capability=multi_purchase' if device and protocol not in ('7','8','9','10') and installer_path('multi_purchase') else '/api/v1/integrations/tally/helper/download?capability=customer_ledger' if device and protocol not in ('6','7','8','9','10') and installer_path('customer_ledger') else '/api/v1/integrations/tally/helper/download' if installer_path() else None),
             'local_available': os.getenv('PHILIXA_TALLY_ALLOW_LOCAL_READS','0') == '1',
@@ -309,6 +309,7 @@ async def jobs(protocol_version:int=1, device: TallyDevice = Depends(device_auth
         if protocol_version>=9:await redis.set('tally:v9online:'+device.id,'1',ex=45)
         if protocol_version>=10:await redis.set('tally:v10online:'+device.id,'1',ex=45)
         if protocol_version>=11:await redis.set('tally:v11online:'+device.id,'1',ex=45)
+        if protocol_version>=12:await redis.set('tally:v12online:'+device.id,'1',ex=45)
         # Brief polls: no database connection held during a long network wait.
         queued = await redis.lpop('tally:queue:v2:'+device.id) if protocol_version>=2 else None
         if protocol_version>=3:
@@ -366,6 +367,7 @@ async def jobs(protocol_version:int=1, device: TallyDevice = Depends(device_auth
         # Do not displace an older operation that has already been popped.
         if not queued and protocol_version>=10:queued=await redis.lpop('tally:queue:v10:'+device.id)
         if not queued and protocol_version>=11:queued=await redis.lpop('tally:queue:v11:'+device.id)
+        if not queued and protocol_version>=12:queued=await redis.lpop('tally:queue:v12:'+device.id)
         if not queued:queued = await redis.lpop('tally:queue:' + device.id)
         approved=(await db.scalars(select(TallyReadCompany).where(TallyReadCompany.device_id==device.id,TallyReadCompany.enabled.is_(True)))).all()
         descriptors=[{'identity':r.identity,'name':r.name} for r in approved]
@@ -404,17 +406,24 @@ async def jobs(protocol_version:int=1, device: TallyDevice = Depends(device_auth
                     if contract['category']!='write' or not action or action.backend!='mcp' or action.status!='draft' or action.organization_id!=device.organization_id or action.company_id!=permitted or action.device_version!=device.credential_hash or action.expires_at<=datetime.now(timezone.utc) or action.payload.get('tool')!=job.get('tool') or action.payload.get('arguments')!=job.get('arguments') or not actor or not actor.is_active or not member or member.status!='active' or member.role not in ('owner','admin'):
                         raise HTTPException(403,'MCP draft authorization invalid')
             except (TallyError,ValueError):raise HTTPException(403,'MCP capability/arguments rejected')
-        if job['operation']!='purchase_history_read' and job['operation'].startswith(('purchase_','stock_count_','customer_ledger_','goods_receipt_')):
+        if job['operation']!='purchase_history_read' and job['operation'].startswith(('purchase_','stock_count_','customer_ledger_','goods_receipt_','masters_')):
             from app.models.tally import TallyAction, TallyConnection
             from app.models.organization_membership import OrganizationMembership
             from app.models.user import User
             from app.services.tally_sync import config_data
             action=await db.get(TallyAction,job.get('action_id'))
-            expected_operation='goods_receipt' if job['operation'].startswith('goods_receipt_') else 'purchase_gst' if job['operation'].startswith('purchase_gst_') else 'purchase_multi' if job['operation'].startswith('purchase_multi_') else 'customer_ledger_create' if job['operation'].startswith('customer_ledger_') else 'stock_count_set' if job['operation'].startswith('stock_count_') else None
-            if action and (action.payload.get('operation') if action.payload.get('operation') in ('stock_count_set','customer_ledger_create','purchase_multi','purchase_gst','goods_receipt') else None)!=expected_operation:
+            expected_operation='masters_create' if job['operation'].startswith('masters_') else 'goods_receipt' if job['operation'].startswith('goods_receipt_') else 'purchase_gst' if job['operation'].startswith('purchase_gst_') else 'purchase_multi' if job['operation'].startswith('purchase_multi_') else 'customer_ledger_create' if job['operation'].startswith('customer_ledger_') else 'stock_count_set' if job['operation'].startswith('stock_count_') else None
+            if action and (action.payload.get('operation') if action.payload.get('operation') in ('stock_count_set','customer_ledger_create','purchase_multi','purchase_gst','goods_receipt','masters_create') else None)!=expected_operation:
                 raise HTTPException(403,'Action operation mismatch')
             cfg=await db.get(TallyConnection,device.organization_id)
             allowed_status={'purchase_validate':('queued',),'purchase_post':('submitting',),'purchase_reconcile':('submitting','verification_pending')}
+            allowed_status.update(masters_validate=('queued',),masters_post=('submitting',),masters_reconcile=('submitting','verification_pending'))
+            if job['operation'].startswith('masters_'):
+                if protocol_version<12 or not action or action.backend!='python' or action.schema_version!=5 or action.approved_arguments!=job.get('payload') or action.target_identity!={'company':job.get('identity')}:raise HTTPException(403,'Master creation authorization/helper update required')
+                if job['operation']!='masters_reconcile':
+                    from app.services.master_creation_service import guard
+                    try:await guard(db,action)
+                    except TallyError:raise HTTPException(403,'Master source changed')
             allowed_status.update(goods_receipt_validate=('queued',),goods_receipt_post=('submitting',),goods_receipt_reconcile=('submitting','verification_pending'))
             if job['operation'].startswith('goods_receipt_'):
                 from app.services.tally_goods_receipt import RECEIPT_CODEC_CERTIFIED

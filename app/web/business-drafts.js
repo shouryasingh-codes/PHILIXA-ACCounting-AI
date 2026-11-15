@@ -328,7 +328,8 @@
     document.getElementById('billDraftAddLine').disabled=value||Boolean(selected&&!selected.editable)||lineRows.length>=100;
     for(const input of [...Object.values(expectedTaxInputs),...Object.values(taxLedgerInputs)]){input.disabled=value||Boolean(selected&&!selected.editable);}
     company.disabled=value||Boolean(selected);
-    document.getElementById('billDraftMakePreview').disabled=value||!selected;
+    document.getElementById('billDraftSave').disabled=value||Boolean(selected&&!selected.editable);
+    document.getElementById('billDraftMakePreview').disabled=value||!selected||!selected.editable;
   };
 
   async function api(path='',options={}) {

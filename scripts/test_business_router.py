@@ -22,6 +22,34 @@ import scripts.test_tally_sync as fixtures
 
 
 class RouterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_contextual_history_does_not_resume_or_mutate_old_task(self):
+        from app.services.intent_router_model import resolve,WireRoute
+        task_result=await tasks.create(self.db,self.principal,tasks.TaskCreate(message='Earlier purchase',request_id=secrets.token_hex(16),company_id=self.company.id))
+        task=await tasks.scoped(self.db,self.principal,task_result['task_id']);task.status='needs_input';await self.db.commit()
+        before=copy.deepcopy(task.state)
+        async def classify(text,context,route_id):
+            return resolve(WireRoute(intent='purchase_history_read',party_name='Sharma Traders',context_relation='continue_current'),context),{}
+        with patch('app.services.intent_router_model.classify',side_effect=classify),patch('app.services.supplier_purchase_read.read',AsyncMock(return_value={'response':'Native Cement lines','history_complete':True,'response_kind':'purchase_history'})) as read,patch.object(tasks,'resume',AsyncMock(side_effect=AssertionError('Read must not resume'))),patch.object(tasks,'create',AsyncMock(side_effect=AssertionError('Read must not create'))):
+            result=await router.route(self.db,self.principal,self.request('Sharma Traders se kya khareeda hai',task_id=task.id,expected_revision=task.revision))
+        await self.db.refresh(task)
+        self.assertEqual(task.state,before);self.assertEqual(task.status,'needs_input')
+        self.assertNotIn('task_id',result);read.assert_awaited_once()
+
+    async def test_new_task_records_provider_for_worker(self):
+        with patch('app.services.ai_engine_manager.get_active_engine',AsyncMock(return_value='gemini')):
+            result=await tasks.create(self.db,self.principal,tasks.TaskCreate(message='Cement 5 bags',request_id=secrets.token_hex(16),company_id=self.company.id))
+        task=await tasks.scoped(self.db,self.principal,result['task_id'])
+        self.assertEqual(task.state['provider'],'gemini')
+
+    async def test_history_question_reads_without_agent_and_replays_once(self):
+        decision=RouteDecision(intent='purchase_history_read',relation='standalone',handler='domain_read',party_name='Sharma Traders',reason='semantic_purchase_history_read')
+        request=self.request('Sharma Traders se kya khareeda hai',fields={'company_id':self.company.id})
+        with patch('app.services.intent_router_model.classify',AsyncMock(return_value=(decision,{}))),patch('app.services.supplier_purchase_read.read',AsyncMock(return_value={'response':'Verified Cement purchase','history_complete':True,'response_kind':'purchase_history'})) as read,patch.object(tasks,'create',AsyncMock(side_effect=AssertionError('No purchase task'))):
+            first=await router.route(self.db,self.principal,request)
+            second=await router.route(self.db,self.principal,request)
+        self.assertEqual(first,second);self.assertEqual(first['response_kind'],'purchase_history')
+        read.assert_awaited_once();self.assertNotIn('task_id',first)
+
     async def asyncSetUp(self):
         await fixtures.DurableTests.asyncSetUp(self)
         self.patches=[patch.dict(os.environ,{'PHILIXA_TASK_AGENT_ENABLED':'1','PHILIXA_INTENT_ROUTER_ENABLED':'1'}),
@@ -173,6 +201,26 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         row=await self.db.get(BusinessRoute,result['route_id'])
         self.assertEqual(row.telemetry['routing_diagnostic'],diagnostic)
         self.assertNotIn('purchase',result['response'])
+        self.assertNotIn('task_id',result)
+
+    async def test_gemini_timeout_is_provider_failure_and_does_not_start_task(self):
+        from app.services.ai_engine_manager import EngineTimeout
+        diagnostic={'model':'gemini-3.5-flash-lite','phase':'response_headers','elapsed_ms':7000,'request_sent_ms':65}
+        with patch('app.services.intent_router_model.classify',AsyncMock(side_effect=EngineTimeout(diagnostic))),patch.object(tasks,'create',AsyncMock(side_effect=AssertionError('No task on timeout'))):
+            result=await router.route(self.db,self.principal,self.request('What did we buy from Example Vendor?'))
+        self.assertEqual(result['issues'][0]['code'],'provider_response_timeout')
+        self.assertIn('Gemini',result['response'])
+        self.assertNotIn('task_id',result)
+        self.assertTrue(result['can_retry_routing'])
+        row=await self.db.get(BusinessRoute,result['route_id'])
+        self.assertEqual(row.telemetry['provider_timing'],diagnostic)
+
+    async def test_gemini_503_is_service_unavailable_not_user_input_failure(self):
+        from app.services.ai_engine_manager import EngineRequestError
+        with patch('app.services.intent_router_model.classify',AsyncMock(side_effect=EngineRequestError('provider_http_error',503))),patch.object(tasks,'create',AsyncMock(side_effect=AssertionError('No task on provider failure'))):
+            result=await router.route(self.db,self.principal,self.request('Show supplier purchases'))
+        self.assertEqual(result['issues'][0]['code'],'provider_temporarily_unavailable')
+        self.assertIn('503',result['response'])
         self.assertNotIn('task_id',result)
 
     async def test_capability_answer_is_specific_not_universal_catalogue(self):

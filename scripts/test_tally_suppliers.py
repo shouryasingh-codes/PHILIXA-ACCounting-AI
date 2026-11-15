@@ -78,4 +78,75 @@ class Suppliers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([next(iter(e)) for e in events],['start','business_planner','tally_tool'])
         self.assertIn('Sharma Traders',str(events[-1]['tally_tool']['result']['tally_choices']))
 
+    async def test_supplier_list_includes_verified_purchased_items_when_db_present(self):
+        self.catalog['ledgers'].extend([
+            node('LEDGER', 'Vendor B', PARENT='Sundry Creditors'),
+            node('LEDGER', 'Vendor C', PARENT='Sundry Creditors'),
+        ])
+        self.snapshot.catalog = serialize_catalog(self.catalog)
+        newest_cache = SimpleNamespace(
+            query={'supplier': 'Sharma Traders'},
+            data={'records': [
+                {'item': 'Cement', 'quantity': '2', 'unit': 'bags', 'rate': '350.00'},
+                {'item': 'Cement', 'quantity': '3', 'unit': 'bags', 'rate': '350.00'},
+            ]},
+        )
+        stale_cache = SimpleNamespace(
+            query={'supplier': 'Sharma Traders'},
+            data={'records': [{'item': 'Cement', 'quantity': '99', 'unit': 'bags', 'rate': '350.00'}]},
+        )
+        actions = [
+            SimpleNamespace(payload={'party': 'Sharma Traders', 'item': 'Cement', 'quantity': '5', 'unit': 'bags', 'rate': '350'}),
+            SimpleNamespace(payload={'operation': 'goods_receipt', 'party': 'Sharma Traders',
+                                     'items': [{'item': 'Cement', 'quantity': '2', 'unit': 'bags', 'rate': '350.00'}]}),
+            SimpleNamespace(payload={'operation': 'purchase_gst', 'party': 'Vendor B',
+                                     'items': [{'item': 'Widget', 'quantity': '12.00', 'unit': 'Nos', 'rate': '500.00'}]}),
+        ]
+
+        class FakeScalarResult:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def all(self):
+                return self._rows
+
+        fake_db = SimpleNamespace(scalars=AsyncMock(side_effect=[FakeScalarResult([newest_cache, stale_cache]), FakeScalarResult(actions)]))
+        with patch.object(suppliers, 'resolve_scope', AsyncMock(return_value=[self.company])), \
+             patch.object(suppliers, 'refresh_company', AsyncMock(return_value=True)), \
+             patch.object(suppliers, 'saved_snapshot', AsyncMock(return_value=self.snapshot)):
+            result = await suppliers.read_suppliers(fake_db, None, commands.ParsedCommand(intent='supplier_list'))
+        response = result['response']
+        self.assertIn('Cement (5 bags Purchase + 2 bags Receipt Note @ ₹350)', response)
+        self.assertNotIn('99 bags', response)
+        self.assertIn('Widget (12 Nos @ ₹500)', response)
+        self.assertIn('Vendor C\n    Stock/Items: Koi verified purchase record nahi mila', response)
+
+    async def test_live_tally_fallback_loads_uncached_supplier_purchases(self):
+        self.catalog['items'].append(node('STOCKITEM', 'Router', GUID='guid-router', BASEUNITS='Nos'))
+        self.catalog['ledgers'].append(node('LEDGER', 'Vendor C', PARENT='Sundry Creditors', GUID='guid-vc'))
+        self.snapshot.catalog = serialize_catalog(self.catalog)
+
+        class FakeScalarResult:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def all(self):
+                return self._rows
+
+        fake_db = SimpleNamespace(scalars=AsyncMock(side_effect=[FakeScalarResult([]), FakeScalarResult([])]))
+
+        async def fake_operation(db, company, kind, **kw):
+            self.assertEqual(kind, 'purchase_history_read')
+            self.assertEqual(kw['payload']['supplier'], 'Vendor C')
+            if 'page' in kw:
+                return {'page': 0, 'records': [{'item': 'Router', 'quantity': '4', 'unit': 'Nos', 'rate': '1500.00'}]}
+            return {'complete': True, 'generation': 'a' * 32, 'hashes': ['h1']}
+
+        with patch.object(suppliers, 'resolve_scope', AsyncMock(return_value=[self.company])), \
+             patch.object(suppliers, 'refresh_company', AsyncMock(return_value=True)), \
+             patch.object(suppliers, 'saved_snapshot', AsyncMock(return_value=self.snapshot)), \
+             patch.object(suppliers.sync, 'operation', AsyncMock(side_effect=fake_operation)):
+            result = await suppliers.read_suppliers(fake_db, None, commands.ParsedCommand(intent='supplier_list'))
+        self.assertIn('Vendor C\n    Stock/Items: Router (4 Nos @ ₹1500)', result['response'])
+
 if __name__=='__main__':unittest.main()

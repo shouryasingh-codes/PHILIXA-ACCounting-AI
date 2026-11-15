@@ -136,5 +136,14 @@ class Contracts(unittest.TestCase):
         ):
             self.assertIsNone(fast_route(phrase,{}),f'Should not fast-route: {phrase}')
 
+    def test_fast_route_accepts_focused_purchase_situation_reply(self):
+        context={'can_continue':True,'focused':True,'task_id':'a'*32,'draft_id':'b'*32}
+        dec=fast_route('Bill mil gaya. Invoice number: E2E-1601. Maal aa gaya. Received date: 02-10-2026. GST alag lagega. Details save karke available final preview dikhao.',context)
+        self.assertIsNotNone(dec)
+        self.assertEqual(dec.intent,'task_reply')
+        self.assertEqual(dec.handler,'domain_continuation')
+        self.assertEqual(dec.reason,'purchase_situation_reply')
+        self.assertIsNone(fast_route('Agar maal aa gaya toh kya?',context))
+
 
 if __name__=='__main__':unittest.main()

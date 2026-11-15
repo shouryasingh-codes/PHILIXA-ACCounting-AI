@@ -33,6 +33,23 @@ def extract(text):
     return facts
 
 
+def situation_only_reply(text):
+    """Return True when a structured situation reply carries no extra rate or free-text corrections."""
+    try:
+        facts=extract(text)
+    except HTTPException:
+        return False
+    if not facts:
+        return False
+    rem=text
+    for proof in facts.values():
+        if proof.get('quote'):
+            rem=rem.replace(proof['quote'],' ',1)
+    rem=re.sub(r'(?i)\bInvoice\s+number\s*:\s*[A-Za-z0-9./_-]{1,100}',' ',rem)
+    rem=re.sub(r'(?i)\bDetails\s+save\s+karke\s+available\s+final\s+preview\s+dikhao\b',' ',rem)
+    return not re.sub(r'[\s.।,!?:;-]+','',rem)
+
+
 async def capture(db,principal,row,text):
     facts=extract(text)
     if not facts:return

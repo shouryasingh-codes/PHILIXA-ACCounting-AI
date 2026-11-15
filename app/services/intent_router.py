@@ -178,6 +178,11 @@ def fast_route(message,context,*,selection=False,refresh=False):
             return RouteDecision(intent='task_reply',relation='continue_current',handler='domain_continuation',
                 target_task_id=context['task_id'],reason='typed_numeric_answer',explicit_fields=[Mention(
                     path=f'lines.{pending[1]}.{pending[2]}',value=text,quote=message.strip())])
+        if context.get('draft_id'):
+            from app.services.purchase_situation import extract as situation_facts
+            if text in {'pata nahi','pata nhi','nahi pata','nhi pata','malum nahi','maloom nahi',"i don't know",'dont know','पता नहीं','पता नही'} or situation_facts(message):
+                return RouteDecision(intent='task_reply',relation='continue_current',handler='domain_continuation',
+                    target_task_id=context['task_id'],reason='purchase_situation_reply')
     if is_create_masters_intent(message):
         target_draft = context.get('draft_id')
         if context.get('can_continue') and context.get('task_id'):

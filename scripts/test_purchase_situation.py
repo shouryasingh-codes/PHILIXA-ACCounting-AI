@@ -108,5 +108,16 @@ class Routing(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result['proposal']['can_prepare_preview'])
         self.assertTrue(any(i['kind']=='blocked' and 'GST' in i.get('message','') for i in result['issues']))
 
+    def test_situation_only_reply_detects_structured_vs_extra_corrections(self):
+        self.assertTrue(intake.situation_only_reply(
+            'Bill mil gaya. Invoice number: E2E-1601. Maal aa gaya. Received date: 02-10-2026. GST alag lagega. Details save karke available final preview dikhao.'
+        ))
+        self.assertFalse(intake.situation_only_reply(
+            'Bill mil gaya. Maal aa gaya. Cement: rate 350. Details save karke available final preview dikhao.'
+        ))
+        self.assertFalse(intake.situation_only_reply(
+            'Bill mil gaya. Quantity 5 kar do.'
+        ))
+
 
 if __name__=='__main__':unittest.main()

@@ -221,14 +221,16 @@ async def execute_agent_task(ctx, task_id, expected_revision=None):
                     await persist(state)
                     return
                 state['observations']=[{'status':'ok','verified':True,'data':{'attachment_sources':state['attachment_sources']}}]
-            from app.services.purchase_situation import extract as situation_facts
+            from app.services.purchase_situation import extract as situation_facts, situation_only_reply
+            situation_refresh = False
             if state.get('draft_id') and state.get('messages') and situation_facts(state['messages'][-1]):
                 from app.services.purchase_draft_service import scoped_draft
                 from app.services.purchase_situation import capture
                 draft=await scoped_draft(db,principal,state['draft_id'])
                 if draft.company_id!=row.company_id:raise ValueError('Draft company changed')
                 await capture(db,principal,draft,state['messages'][-1])
-            if state.pop('selection_refresh',False):
+                situation_refresh = not state.get('attachment_document_ids') and situation_only_reply(state['messages'][-1])
+            if state.pop('selection_refresh',False) or situation_refresh:
                 # The user's exact choice is already committed. Refresh scoped
                 # context and ask the domain question without a planner call.
                 from app.services.purchase_situation import state as proposal

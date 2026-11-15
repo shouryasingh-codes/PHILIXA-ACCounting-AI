@@ -166,29 +166,45 @@ async def read_stock(db, principal, parsed, scope=None):
             r.update(await stock_projection(db,companies[r['company_id']],item['item'],item['quantity'],item['unit']))
     partial = any(r['status'] in ('unavailable', 'ambiguous') for r in results)
     has_saved=any(r.get('data_source')=='saved' for r in results)
-    lines = ['Partial result — kuch companies verify nahi hui.' if partial else 'Tally stock (last synced data included):' if has_saved else 'Tally live stock:']
+    if partial:
+        lines = ['Kuch companies ka live stock abhi verify nahi ho paya — jo verified data mila hai woh neeche hai:']
+    elif has_saved:
+        lines = ['Yeh raha aapka Tally stock (is mein last synced data bhi shaamil hai):']
+    else:
+        lines = ['Yeh raha aapka live Tally stock:']
     choices = []
     for r in results:
         if r['status']=='all':
-            lines.append(r['company']+':')
-            for i in r['items']:lines.append(f"{i['item']} — {i['quantity'] if i['quantity'] is not None else i['raw_quantity']} {i['unit'] if i['quantity'] is not None else ''}".strip())
-            if not r['items']:lines.append('Stock items nahi mile.')
+            count_note = f" ({len(r['items'])} items)" if r['items'] else ''
+            lines.append(f"\n**{r['company']}**{count_note}")
+            for i in r['items']:
+                qty = i['quantity'] if i['quantity'] is not None else i['raw_quantity']
+                unit = i['unit'] if i['quantity'] is not None else ''
+                lines.append(f"- {i['item']} — {qty} {unit}".strip())
+            if not r['items']:lines.append('Is company mein koi stock item nahi mila.')
             if r.get('data_source')=='saved':lines.append(f"Last synced: {r['last_synced_at']} · {r['reason']}")
         elif r['status'] == 'ok':
             i = r['items'][0]
-            lines.append(f"{r['company']}: {i['item']} — {i['quantity'] if i['quantity'] is not None else i['raw_quantity']} {i['unit'] if i['quantity'] is not None else ''}".strip())
+            qty = i['quantity'] if i['quantity'] is not None else i['raw_quantity']
+            unit = i['unit'] if i['quantity'] is not None else ''
+            lines.append(f"\n**{r['company']}**: {i['item']} — {qty} {unit}".strip())
             if i.get('limitation'): lines.append(i['limitation'])
             if r.get('data_source')=='saved':lines.append(f"Last synced: {r['last_synced_at']} · {r['reason']}")
-            if r.get('sync_status')=='verification_pending':lines.append('Entry verification pending; expected stock abhi confirm nahi.')
+            if r.get('sync_status')=='verification_pending':lines.append('Ek entry abhi verification mein hai, isliye sync ke baad ka expected stock abhi confirm nahi hai.')
             elif r.get('pending_quantity')!='0':
-                lines.append(f"Pending purchase: +{r['pending_quantity']} {i['unit']}")
-                lines.append(f"Expected after sync: {r['expected_quantity']} {i['unit']}" if r['expected_quantity'] is not None else 'Expected total unavailable; unit/configuration review needed.')
+                lines.append(f"- Pending purchase: +{r['pending_quantity']} {i['unit']}")
+                lines.append(f"- Sync ke baad expected stock: {r['expected_quantity']} {i['unit']}" if r['expected_quantity'] is not None else '- Sync ke baad expected total abhi calculate nahi ho paya (unit/configuration check karein).')
         elif r['status'] == 'ambiguous':
-            lines.append(r['company'] + ': multiple items match; item select karein.')
+            lines.append(f"\n**{r['company']}**: Is naam se ek se zyada items mile — neeche se sahi item select karein.")
             choices.extend({'name': r['company'] + ' / ' + i['item'], 'command': selection(parsed, company_id=r['company_id'], item_name=i['item'])} for i in r['items'])
         else:
-            lines.append(r['company'] + (': item nahi mila.' if r['status'] == 'item_not_found' else ': '+r.get('reason','Company unavailable')+'; stock unknown.'))
-    lines.append('Saved data ki as-of dates company-wise hain; no combined total.' if has_saved else f"As of: {as_of}; no combined total.")
+            lines.append(f"\n**{r['company']}**: " + ('Yeh stock item nahi mila.' if r['status'] == 'item_not_found' else r.get('reason','Company abhi unavailable hai') + ' — stock confirm nahi ho paya.'))
+    if has_saved:
+        lines.append('\nHar company ka sync time alag hai; alag companies ka combined total nahi joda gaya hai.')
+    elif len(results) > 1:
+        lines.append(f"\nSabhi quantities {as_of} ke live Tally read ke hisaab se hain (alag companies ka combined total nahi joda gaya hai).")
+    else:
+        lines.append(f"\nYeh live stock {as_of} tak ke Tally read ke hisaab se hai.")
     response = {'response': '\n'.join(lines), 'source': 'Tally saved/live read' if has_saved else 'Tally live read', 'data_source':'mixed' if has_saved and any(r.get('data_source')=='live' for r in results) else 'saved' if has_saved else 'live', 'stock_results': results,
                 'coverage': {'requested': len(scope), 'checked': sum(r['status'] != 'unavailable' for r in results), 'partial': partial}, 'tally_choices': choices}
     response['coverage']['live_checked']=sum(r.get('data_source')=='live' for r in results)

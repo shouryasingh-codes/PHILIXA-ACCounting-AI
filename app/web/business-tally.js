@@ -337,14 +337,159 @@
       });tools.append(panel);
     }
     if(data.stock_results){
-      const details=document.createElement('p');
-      details.textContent=data.stock_results.filter(r=>r.read_at||r.last_synced_at).map(r=>`${r.company}: ${r.data_source==='saved'?'Last synced':'Live read'} ${new Date(r.last_synced_at||r.read_at).toLocaleString()}`).join(' · ');
-      tools.append(details);
-      data.stock_results.filter(r=>r.data_source==='saved').forEach(r=>toolButton(tools,'Sync '+r.company,async()=>{
-        const result=document.createElement('p');tools.append(result);
-        try{const response=await api('/companies/'+encodeURIComponent(r.company_id)+'/refresh','POST',{});result.textContent=response.response;}
-        catch(error){result.textContent=error.message;}
-      }));
+      const results=data.stock_results;
+      const hasList=results.some(r=>r.status==='all'&&r.items?.length);
+      const totalItems=results.reduce((sum,r)=>sum+(r.status==='all'&&r.items?r.items.length:0),0);
+      const card=document.createElement('div');
+      card.className='business-stock-card';
+      let searchInput=null;
+      const searchableRows=[];
+      if(hasList&&totalItems>=6){
+        const searchBar=document.createElement('div');
+        searchBar.className='business-stock-searchbar';
+        searchInput=document.createElement('input');
+        searchInput.type='search';
+        searchInput.className='business-stock-search';
+        searchInput.placeholder=`${totalItems} items mein search karein…`;
+        searchInput.setAttribute('aria-label','Stock items filter karein');
+        searchBar.append(searchInput);
+        card.append(searchBar);
+      }
+      results.forEach(r=>{
+        const section=document.createElement('section');
+        section.className='business-stock-company';
+        const head=document.createElement('div');
+        head.className='business-stock-head';
+        const titleWrap=document.createElement('div');
+        titleWrap.className='business-stock-title-wrap';
+        const coName=document.createElement('strong');
+        coName.className='business-stock-co-name';
+        coName.textContent=r.company||'Tally Company';
+        titleWrap.append(coName);
+        if(r.data_source==='live'||r.data_source==='saved'){
+          const pill=document.createElement('span');
+          pill.className='business-stock-pill '+(r.data_source==='saved'?'is-saved':'is-live');
+          pill.textContent=r.data_source==='saved'?'Saved snapshot':'Live Tally';
+          titleWrap.append(pill);
+        }
+        if(r.status==='all'&&r.items?.length){
+          const count=document.createElement('span');
+          count.className='business-stock-count';
+          count.textContent=`${r.items.length} items`;
+          titleWrap.append(count);
+        }
+        head.append(titleWrap);
+        const metaWrap=document.createElement('div');
+        metaWrap.className='business-stock-meta';
+        if(r.read_at||r.last_synced_at){
+          const ts=document.createElement('span');
+          ts.className='business-stock-time';
+          ts.textContent=`${r.data_source==='saved'?'Last synced':'Live read'} · ${new Date(r.last_synced_at||r.read_at).toLocaleString()}`;
+          metaWrap.append(ts);
+        }
+        if(r.data_source==='saved'&&r.company_id){
+          const syncBtn=toolButton(metaWrap,'Sync '+r.company,async()=>{
+            const result=document.createElement('p');result.className='business-stock-note';section.append(result);
+            try{const response=await api('/companies/'+encodeURIComponent(r.company_id)+'/refresh','POST',{});result.textContent=response.response;}
+            catch(error){result.textContent=error.message;}
+          });
+          syncBtn.className='business-stock-sync-btn';
+        }
+        head.append(metaWrap);
+        section.append(head);
+        if(r.status==='all'&&r.items?.length){
+          const table=document.createElement('table');
+          table.className='business-stock-table';
+          const thead=document.createElement('thead');
+          const hr=document.createElement('tr');
+          const thItem=document.createElement('th');thItem.textContent='Stock Item';
+          const thQty=document.createElement('th');thQty.className='is-num';thQty.textContent='Closing Stock';
+          hr.append(thItem,thQty);thead.append(hr);table.append(thead);
+          const tbody=document.createElement('tbody');
+          r.items.forEach(item=>{
+            const tr=document.createElement('tr');
+            const tdName=document.createElement('td');
+            tdName.className='business-stock-item-name';
+            tdName.textContent=item.item;
+            const tdQty=document.createElement('td');
+            tdQty.className='business-stock-item-qty is-num';
+            const qtyVal=item.quantity!==null&&item.quantity!==undefined?String(item.quantity):String(item.raw_quantity||'0');
+            const unitVal=item.quantity!==null&&item.quantity!==undefined?(item.unit||''):'';
+            const badge=document.createElement('span');
+            badge.className='business-stock-qty-badge'+(qtyVal==='0'?' is-zero':'');
+            badge.textContent=unitVal?`${qtyVal} ${unitVal}`:qtyVal;
+            tdQty.append(badge);
+            tr.append(tdName,tdQty);
+            tbody.append(tr);
+            searchableRows.push({tr,name:String(item.item||'').toLowerCase()});
+          });
+          table.append(tbody);
+          section.append(table);
+        }else if(r.status==='all'){
+          const empty=document.createElement('p');
+          empty.className='business-stock-note';
+          empty.textContent='Is company mein koi stock item nahi mila.';
+          section.append(empty);
+        }else if(r.status==='ok'&&r.items?.length){
+          const item=r.items[0];
+          const single=document.createElement('div');
+          single.className='business-stock-single';
+          const nameEl=document.createElement('span');
+          nameEl.className='business-stock-single-name';
+          nameEl.textContent=item.item;
+          const qtyVal=item.quantity!==null&&item.quantity!==undefined?String(item.quantity):String(item.raw_quantity||'0');
+          const unitVal=item.quantity!==null&&item.quantity!==undefined?(item.unit||''):'';
+          const badge=document.createElement('span');
+          badge.className='business-stock-qty-badge'+(qtyVal==='0'?' is-zero':'');
+          badge.textContent=unitVal?`${qtyVal} ${unitVal}`:qtyVal;
+          single.append(nameEl,badge);
+          section.append(single);
+          if(r.pending_quantity&&r.pending_quantity!=='0'){
+            const extra=document.createElement('p');
+            extra.className='business-stock-note';
+            extra.textContent=r.expected_quantity!==null&&r.expected_quantity!==undefined?`Pending purchase: +${r.pending_quantity} ${item.unit||''} → Sync ke baad expected: ${r.expected_quantity} ${item.unit||''}`:`Pending purchase: +${r.pending_quantity} ${item.unit||''}`;
+            section.append(extra);
+          }else if(r.sync_status==='verification_pending'){
+            const extra=document.createElement('p');extra.className='business-stock-note';
+            extra.textContent='Ek entry abhi verification mein hai; expected stock sync ke baad update hoga.';
+            section.append(extra);
+          }
+        }else{
+          const note=document.createElement('p');
+          note.className='business-stock-note';
+          note.textContent=r.reason||(r.status==='item_not_found'?'Yeh item is company mein nahi mila.':r.status==='ambiguous'?'Ek se zyada matching items mile; neeche se select karein.':'Stock verify nahi ho paya.');
+          section.append(note);
+        }
+        card.append(section);
+      });
+      if(searchInput){
+        const emptyFilter=document.createElement('p');
+        emptyFilter.className='business-stock-note';
+        emptyFilter.hidden=true;
+        emptyFilter.textContent='Search se match hota koi stock item nahi mila.';
+        card.append(emptyFilter);
+        searchInput.addEventListener('input',()=>{
+          const q=searchInput.value.trim().toLowerCase();
+          let visible=0;
+          searchableRows.forEach(row=>{
+            const show=!q||row.name.includes(q);
+            row.tr.hidden=!show;
+            if(show)visible++;
+          });
+          emptyFilter.hidden=visible>0;
+        });
+      }
+      tools.append(card);
+      if(hasList&&context.renderMessageText){
+        const partial=results.some(r=>r.status==='unavailable'||r.status==='ambiguous');
+        const hasSaved=results.some(r=>r.data_source==='saved');
+        const summary=partial
+          ?`Verified companies mein **${totalItems} stock items** mile — kuch companies verify nahi ho payin; details neeche hain:`
+          :hasSaved
+            ?`Aapke Tally mein **${totalItems} stock items** hain (last synced data ke saath) — neeche puri list dekh sakte hain:`
+            :`Aapke live Tally mein **${totalItems} stock items** mile — neeche closing stock ke saath puri list hai:`;
+        context.renderMessageText(summary);
+      }
     }
     if(data.purchase_setup)toolButton(tools,'Purchase entry setup',()=>window.openBusinessPurchaseSetup(data.purchase_setup.company));
     else if(data.connect_tally)toolButton(tools,'Connect Tally',connect);

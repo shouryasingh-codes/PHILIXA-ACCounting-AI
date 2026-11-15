@@ -34,10 +34,12 @@ def help_answer(message: str) -> str | None:
     ):
         return None
     return (
-        "Main Tally ka stock aur supported reports dikha sakti hoon, "
-        "purchase ka draft bana sakti hoon aur bill PDF/photo se details nikaalne mein help kar sakti hoon.\n"
-        "Try karo: ‘Stock kitna hai?’ ya ‘Sharma se 5 Cement bags ₹350 mein kharide.’\n"
-        "Entry se pehle zaroori details aur approval check honge; "
+        "Main aapke business ke Tally aur daily accounting kaam aasan karne mein madad kar sakti hoon:\n\n"
+        "- **Live Tally Stock & Reports:** Company-wise stock items, quantities aur supported reports turant dekhna\n"
+        "- **Suppliers & Purchases:** Party details, balances aur purane purchase records check karna\n"
+        "- **Purchase Entry & Bills:** Bill PDF/photo se details nikaalna aur approval ke baad Tally entry prepare karna\n\n"
+        "**Try karke dekhein:** `Mere stock items dikhao` ya `Sharma se 5 Cement bags ₹350 mein kharide`\n\n"
+        "Har entry se pehle zaroori details aur aapka approval check hota hai — "
         "Tally se verify hone par hi entry successful bataungi."
     )
 

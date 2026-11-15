@@ -128,10 +128,32 @@ body { margin: 0; background: #fff; }
 .business-footnote { text-align:center;font-size:10px;color:#929b95;margin:12px 0 0;line-height:1.6; }
 .business-voice-status { color:#6e7b72;font-size:12px;min-height:16px;margin:0 8px 8px; }
 .business-messages { max-width:760px;margin:auto;padding:20px 30px; }
-.business-message { font-size:14px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 24px; }
+.business-message { font-size:14px;line-height:1.72;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 24px; }
 .business-message.user { margin-left:auto;max-width:85%;padding:12px 18px;border-radius:18px 18px 4px 18px;background:#f0f3ef;width:fit-content; }
-.business-message.assistant { padding-left:38px;position:relative; }
+.business-message.assistant { padding-left:38px;position:relative;white-space:normal; }
 .business-message.assistant::before { content:'p';position:absolute;left:0;top:3px;background:#eaf2ec;color:#28684d;width:25px;height:25px;line-height:23px;text-align:center;border-radius:8px;font-weight:600;font-size:18px; }
+.business-message.assistant .business-message-text { white-space:normal;color:#222c26;font-size:14.5px;line-height:1.68; }
+.business-message.assistant .business-message-text > :first-child { margin-top:0; }
+.business-message.assistant .business-message-text > :last-child { margin-bottom:0; }
+.business-message.assistant .bc-p { margin:0 0 10px; }
+.business-message.assistant .bc-h3 { margin:14px 0 8px;font-size:16px;font-weight:650;color:#1b3828;letter-spacing:-0.01em; }
+.business-message.assistant .bc-h4 { margin:12px 0 6px;font-size:14.5px;font-weight:650;color:#234935; }
+.business-message.assistant .bc-list { margin:6px 0 12px;padding-left:20px;display:grid;gap:5px; }
+.business-message.assistant .bc-ol { padding-left:22px; }
+.business-message.assistant .bc-list li { padding-left:2px; }
+.business-message.assistant .bc-list li::marker { color:#4d7f63;font-weight:600; }
+.business-message.assistant .bc-li-sub { font-size:12.5px;color:#5a6960;margin-top:2px;line-height:1.5; }
+.business-message.assistant .bc-code { background:#edf3ee;color:#1d4e38;padding:1.5px 6px;border-radius:5px;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.business-message.assistant .bc-pre { margin:10px 0;padding:12px 14px;border-radius:10px;background:#f5f8f6;border:1px solid #dce5de;overflow-x:auto;font-size:12.5px;line-height:1.55; }
+.business-message.assistant .bc-pre code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#1f3027; }
+.business-message.assistant .bc-quote { margin:10px 0;padding:8px 14px;border-left:3px solid #4d8a6a;background:#f6faf7;border-radius:0 8px 8px 0;color:#354a3d; }
+.business-message.assistant .bc-hr { border:0;border-top:1px solid #e3eae5;margin:12px 0; }
+.business-message.assistant .bc-link { color:#206346;text-decoration:underline;text-underline-offset:2px; }
+.business-message.assistant .bc-table-wrap { overflow-x:auto;margin:10px 0;border:1px solid #dce5de;border-radius:10px;background:#fff; }
+.business-message.assistant .bc-table { width:100%;border-collapse:collapse;font-size:13px; }
+.business-message.assistant .bc-table th { text-align:left;padding:9px 12px;background:#f4f8f5;color:#274434;font-weight:600;border-bottom:1px solid #dce5de; }
+.business-message.assistant .bc-table td { padding:8px 12px;border-bottom:1px solid #edf2ee;color:#26322b; }
+.business-message.assistant .bc-table tr:last-child td { border-bottom:0; }
 .business-message button { display:block;margin-top:12px;border:1px solid #d5e3d9;border-radius:9px;background:#f3f8f4;color:#28684d;padding:8px 12px;font-size:12px; }
 .business-dialog { width:min(460px,calc(100% - 32px));border:1px solid #dce5de;border-radius:18px;padding:24px;background:#fff;color:#344338;font-family:Inter,system-ui,sans-serif;box-shadow:0 20px 80px #13261f30; }
 .business-dialog::backdrop { background:#182c2355; }
@@ -402,4 +424,34 @@ body { margin: 0; background: #fff; }
 .purchase-primary-action-btn:hover {
   background: #1e523c !important;
 }
+
+.business-stock-card { flex-basis:100%;width:100%;border:1px solid #d6e2da;border-radius:14px;background:#ffffff;overflow:hidden;box-shadow:0 2px 10px rgba(26,58,41,0.04);white-space:normal; }
+.business-stock-searchbar { padding:10px 14px;background:#f7faf8;border-bottom:1px solid #e6eee8; }
+.business-stock-search { width:100%;padding:8px 12px;border:1px solid #cfdcd3;border-radius:9px;background:#fff !important;font:inherit;font-size:13px;outline:none; }
+.business-stock-search:focus { border-color:#28684d;box-shadow:0 0 0 3px rgba(40,104,77,0.12); }
+.business-stock-company + .business-stock-company { border-top:1px solid #e4ece6; }
+.business-stock-head { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:#f7faf8;border-bottom:1px solid #eaf0ec; }
+.business-stock-title-wrap { display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0; }
+.business-stock-co-name { font-size:14px;font-weight:650;color:#1d3b2b; }
+.business-stock-pill { font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;line-height:1.4; }
+.business-stock-pill.is-live { background:#e6f4ec;color:#1d6442;border:1px solid #bfe0cc; }
+.business-stock-pill.is-saved { background:#fef3d8;color:#8a5b00;border:1px solid #f2d590; }
+.business-stock-count { font-size:11.5px;color:#5c6e63;font-weight:500; }
+.business-stock-meta { display:flex;flex-wrap:wrap;align-items:center;gap:8px; }
+.business-stock-time { font-size:11.5px;color:#6c7b71; }
+.business-stock-sync-btn { padding:4px 10px !important;font-size:11.5px !important;border-radius:7px !important;margin:0 !important; }
+.business-stock-table { width:100%;border-collapse:collapse;font-size:13.5px; }
+.business-stock-table th { text-align:left;padding:9px 14px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:#5b6d62;background:#fbfdfb;border-bottom:1px solid #e8efe9; }
+.business-stock-table th.is-num, .business-stock-table td.is-num { text-align:right;white-space:nowrap; }
+.business-stock-table td { padding:10px 14px;border-bottom:1px solid #f0f4f1;color:#222c26;vertical-align:middle; }
+.business-stock-table tbody tr:last-child td { border-bottom:0; }
+.business-stock-table tbody tr:hover { background:#f8fbf9; }
+.business-stock-item-name { font-weight:500;overflow-wrap:anywhere;padding-right:12px; }
+.business-stock-qty-badge { display:inline-block;font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px;padding:3px 9px;border-radius:999px;background:#eef5f0;color:#1d563a;border:1px solid #d4e5d9; }
+.business-stock-qty-badge.is-zero { background:#f7f4eb;color:#846828;border-color:#e8dec0; }
+.business-stock-single { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px; }
+.business-stock-single-name { font-size:14px;font-weight:550;color:#203027;overflow-wrap:anywhere; }
+.business-stock-note { margin:0;padding:10px 14px;font-size:12.5px;color:#637369; }
+@media(max-width:600px){ .business-stock-head,.business-stock-table td,.business-stock-table th{padding-left:11px;padding-right:11px;} }
+
 

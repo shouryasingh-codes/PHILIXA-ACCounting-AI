@@ -256,30 +256,30 @@ async def read_suppliers(db, principal, parsed):
                 db, company, [name(l) for l in matches[:100]], catalog=catalog, live=live)
             source = 'live' if live else 'saved'
             status_text = "Tally live suppliers" if live else "Saved Tally suppliers (live unavailable)"
-            lines.append(f"{company.name} — {status_text}")
+            lines.append(f"**{company.name}** — {status_text}")
             complete = 'groups' in snapshot.catalog
             if not complete:
                 lines.append('Older connector: direct Sundry Creditors ledgers only; subgroup coverage unverified. Connector update required for complete list.')
             if not matches:
                 if query:
                     others = [l for l in catalog['ledgers'] if name(l).casefold() == query]
-                    lines.append(f'{parsed.party_name}: ledger exists under {value(others[0], "PARENT")}; supplier classification not verified.' if len(others) == 1 else 'Matching supplier nahi mila.')
+                    lines.append(f"**{parsed.party_name}**: ledger exists under `{value(others[0], 'PARENT')}`; supplier classification not verified." if len(others) == 1 else 'Matching supplier nahi mila.')
                 else:
-                    lines.append('Is company mein matching supplier nahi mila.')
+                    lines.append('Is company mein koi matching supplier nahi mila.')
             elif parsed.intent == 'supplier_read' and len(matches) == 1:
                 ledger = matches[0]
-                lines.extend(['', name(ledger), 'Tally group: ' + value(ledger, 'PARENT')])
+                lines.extend(['', f"### {name(ledger)}", f"- **Tally group:** {value(ledger, 'PARENT')}"])
                 for label, tag in [('Phone', 'LEDGERPHONE'), ('Mobile', 'LEDGERMOBILE'), ('Email', 'EMAIL'), ('Opening balance', 'OPENINGBALANCE'), ('Closing balance', 'CLOSINGBALANCE')]:
                     field = value(ledger, tag)
                     if field:
-                        lines.append(label + ': ' + field)
+                        lines.append(f"- **{label}:** {field}")
                 if db is not None and purchased_by_supplier.get(name(ledger)):
-                    lines.append('Purchased items: ' + ', '.join(purchased_by_supplier[name(ledger)]))
+                    lines.append('- **Purchased items:** ' + ', '.join(purchased_by_supplier[name(ledger)]))
                 results.append({'company_id': company.id, 'company': company.name, 'name': name(ledger), 'group': value(ledger, 'PARENT'), 'data_source': source})
             else:
                 multiple_cos = len(scope) > 1
                 if parsed.intent == 'supplier_read' and query:
-                    lines.append(f"'{parsed.party_name}' se match hote hue {len(matches)} suppliers mile. Select karein:")
+                    lines.append(f"'{parsed.party_name}' se match hote hue {len(matches)} suppliers mile — neeche se select karein:")
                 else:
                     item_filter = (parsed.item_name or '').strip()
                     item_key = item_filter.casefold()
@@ -288,7 +288,7 @@ async def read_suppliers(db, principal, parsed):
                         if any(item_key in entry.casefold() for entry in purchased_by_supplier.get(name(l), []))
                     ] if parsed.intent == 'supplier_list' and item_key and item_key != '*' and db is not None else [])
                     if filtered_matches:
-                        lines.append(f"\n'{item_filter}' aapne in suppliers se kharida hai:\n")
+                        lines.append(f"\n**{item_filter}** aapne in suppliers se kharida hai:\n")
                         for l in filtered_matches[:25]:
                             lines.append(f"  • {name(l)}")
                             matching_items = [e for e in purchased_by_supplier.get(name(l), []) if item_key in e.casefold()]
@@ -296,9 +296,9 @@ async def read_suppliers(db, principal, parsed):
                         matches = filtered_matches
                     else:
                         if item_key and item_key != '*':
-                            lines.append(f"\n'{item_filter}' ke liye kisi supplier se verified purchase record nahi mila. Saare {len(matches)} suppliers:\n")
+                            lines.append(f"\n**{item_filter}** ke liye kisi supplier se verified purchase record nahi mila. Saare {len(matches)} suppliers:\n")
                         else:
-                            lines.append(f"\nAapke paas kul {len(matches)} suppliers (Sundry Creditors) hain:\n")
+                            lines.append(f"\nAapke paas kul **{len(matches)} suppliers** (Sundry Creditors) hain:\n")
                         for i, l in enumerate(matches[:25], 1):
                             lines.append(f"  • {name(l)}")
                             if db is not None:
@@ -308,7 +308,7 @@ async def read_suppliers(db, principal, parsed):
                             lines.append(f"  ...aur {len(matches) - 25} suppliers")
                 choices.extend(choice(parsed, company, l, multiple_cos) for l in matches[:100])
                 if len(matches) > 100:
-                    lines.append('First 100 shown; supplier ka naam search karein.')
+                    lines.append('Pehle 100 suppliers dikhaye gaye hain; kisi khas supplier ke liye uska naam likhkar search karein.')
         except TallyError:
             lines.append(company.name + ': supplier data unavailable; connection/company access check karein.')
     return {'response': '\n'.join(lines), 'tally_choices': choices, 'supplier_results': results}

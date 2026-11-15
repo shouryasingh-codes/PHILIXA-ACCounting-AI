@@ -212,12 +212,12 @@ async def read(db, principal, company_id, supplier, from_date=None, to_date=None
                 include_cache=True, existing_vouchers=set())
             if fallback:
                 fallback.sort(key=lambda r: (r.get('entry_date', ''), r.get('voucher_id', '')), reverse=True)
-                heading = (f"{company.name} — {name(party)} se purchases (Saved verified records; Tally abhi live nahi hai)\n"
-                           f"Period: {start.isoformat()} se {end.isoformat()}.")
-                lines = [heading]
+                heading = (f"**{company.name}** — **{name(party)}** se purchases (Saved verified records; Tally abhi live nahi hai)\n"
+                           f"Period: {start.isoformat()} se {end.isoformat()}")
+                lines = [heading, ""]
                 for row in fallback[:50]:
                     src = row.get('source_label') or 'Cached Tally line'
-                    lines.append(f"• {row['entry_date']}: {row['item']} — {row['quantity']} {row['unit']} × ₹{row['rate']} = ₹{row['amount']} ({src}); bill {row.get('invoice_number') or 'reference missing'}")
+                    lines.append(f"- **{row['entry_date']}:** {row['item']} — {row['quantity']} {row['unit']} × ₹{row['rate']} = **₹{row['amount']}** ({src}); bill `{row.get('invoice_number') or 'reference missing'}`")
                 return {'response': '\n'.join(lines), 'status': 'completed', 'response_kind': 'purchase_history',
                         'data_source': 'cached', 'history_complete': False, 'collected_at': cache_collected_at,
                         'history_records': fallback[:50], 'history_count': len(fallback),
@@ -229,11 +229,11 @@ async def read(db, principal, company_id, supplier, from_date=None, to_date=None
     if extra_actions:
         records = list(records) + extra_actions
     records.sort(key=lambda r:(r['entry_date'],r['voucher_id']),reverse=True)
-    heading=f"{company.name} — {name(party)} se purchases\nPeriod: {start.isoformat()} se {end.isoformat()} (180 din tak ka search)."
-    lines=[heading]
+    heading=f"**{company.name}** — **{name(party)}** se purchases\nPeriod: {start.isoformat()} se {end.isoformat()} (180 din tak ka search)"
+    lines=[heading, ""]
     for row in records[:50]:
         src = row.get('source_label') or 'Tally line amount'
-        lines.append(f"• {row['entry_date']}: {row['item']} — {row['quantity']} {row['unit']} × ₹{row['rate']} = ₹{row['amount']} ({src}); bill {row['invoice_number'] or 'reference missing'}")
+        lines.append(f"- **{row['entry_date']}:** {row['item']} — {row['quantity']} {row['unit']} × ₹{row['rate']} = **₹{row['amount']}** ({src}); bill `{row['invoice_number'] or 'reference missing'}`")
     if not records:lines.append('Is verified period aur covered stock items mein koi matching Purchase voucher line nahi mili.')
     if len(records)>50:lines.append(f'Pehli 50/{len(records)} lines dikhayi hain; narrower period de sakte hain.')
     return {'response':'\n'.join(lines),'status':'completed','response_kind':'purchase_history',

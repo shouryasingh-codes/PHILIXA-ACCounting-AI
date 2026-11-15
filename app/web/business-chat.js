@@ -106,7 +106,7 @@
         if(!response.ok)throw new Error('Task status unavailable; retry status check.');
         const current=await response.json();
         if(marker!==epoch||scope!==activeScope||!node.isConnected)return;
-        node.querySelector('.business-message-text').textContent=current.response;
+        setMessageText(node, current.response, 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(t=>t.remove());
         renderTools(node,current,originalText);
@@ -288,14 +288,185 @@
       reset();conversationId=null;conversationRevision=0;renderChatList();input.focus();
     }).finally(()=>{loadingChat=false;resize();});
   });
+  function appendInlineNodes(parent, line) {
+    const tokenRe = /(`[^`\n]+`|\*\*[^*\n]+?\*\*|\*[^*\s][^*\n]*?\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s<>()]+)/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = tokenRe.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parent.append(document.createTextNode(line.slice(lastIndex, match.index)));
+      }
+      const token = match[0];
+      if (token.startsWith('`') && token.endsWith('`')) {
+        const code = document.createElement('code');
+        code.className = 'bc-code';
+        code.textContent = token.slice(1, -1);
+        parent.append(code);
+      } else if (token.startsWith('**') && token.endsWith('**')) {
+        const strong = document.createElement('strong');
+        strong.textContent = token.slice(2, -2);
+        parent.append(strong);
+      } else if (token.startsWith('*') && token.endsWith('*')) {
+        const em = document.createElement('em');
+        em.textContent = token.slice(1, -1);
+        parent.append(em);
+      } else if (token.startsWith('[')) {
+        const splitAt = token.indexOf('](');
+        const label = token.slice(1, splitAt);
+        const href = token.slice(splitAt + 2, -1);
+        const a = document.createElement('a');
+        a.className = 'bc-link';
+        a.href = href;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = label;
+        parent.append(a);
+      } else {
+        let href = token;
+        let trail = '';
+        while (href.length > 8 && /[.,;:!?)]$/.test(href)) {
+          trail = href.slice(-1) + trail;
+          href = href.slice(0, -1);
+        }
+        const a = document.createElement('a');
+        a.className = 'bc-link';
+        a.href = href;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = href;
+        parent.append(a);
+        if (trail) parent.append(document.createTextNode(trail));
+      }
+      lastIndex = tokenRe.lastIndex;
+    }
+    if (lastIndex < line.length) {
+      parent.append(document.createTextNode(line.slice(lastIndex)));
+    }
+  }
+  function renderRichText(container, rawText) {
+    container.textContent = '';
+    const text = String(rawText ?? '').replace(/\r\n?/g, '\n');
+    if (!text.trim()) return;
+    const lines = text.split('\n');
+    const para = [];
+    const flushPara = () => {
+      if (!para.length) return;
+      const p = document.createElement('p');
+      p.className = 'bc-p';
+      para.forEach((line, idx) => {
+        if (idx > 0) p.append(document.createElement('br'));
+        appendInlineNodes(p, line);
+      });
+      container.append(p);
+      para.length = 0;
+    };
+    const isTableSep = line => /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*(?:\s*:?-{3,}:?\s*\|?)?\s*$/.test(line);
+    const parseTableRow = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed) { flushPara(); i++; continue; }
+      if (trimmed.startsWith('```')) {
+        flushPara();
+        i++;
+        const codeLines = [];
+        while (i < lines.length && !lines[i].trim().startsWith('```')) { codeLines.push(lines[i]); i++; }
+        if (i < lines.length) i++;
+        const pre = document.createElement('pre'); pre.className = 'bc-pre';
+        const code = document.createElement('code'); code.textContent = codeLines.join('\n');
+        pre.append(code); container.append(pre);
+        continue;
+      }
+      if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+        flushPara();
+        const hr = document.createElement('hr'); hr.className = 'bc-hr';
+        container.append(hr); i++; continue;
+      }
+      const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+      if (heading) {
+        flushPara();
+        const h = document.createElement(heading[1].length <= 2 ? 'h3' : 'h4');
+        h.className = heading[1].length <= 2 ? 'bc-h3' : 'bc-h4';
+        appendInlineNodes(h, heading[2]);
+        container.append(h); i++; continue;
+      }
+      if (trimmed.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        flushPara();
+        const headers = parseTableRow(lines[i]); i += 2;
+        const wrap = document.createElement('div'); wrap.className = 'bc-table-wrap';
+        const table = document.createElement('table'); table.className = 'bc-table';
+        const thead = document.createElement('thead'); const headTr = document.createElement('tr');
+        headers.forEach(cell => { const th = document.createElement('th'); appendInlineNodes(th, cell); headTr.append(th); });
+        thead.append(headTr); table.append(thead);
+        const tbody = document.createElement('tbody');
+        while (i < lines.length && lines[i].trim().includes('|') && !isTableSep(lines[i])) {
+          const cells = parseTableRow(lines[i]); const tr = document.createElement('tr');
+          headers.forEach((_, idx) => { const td = document.createElement('td'); appendInlineNodes(td, cells[idx] ?? ''); tr.append(td); });
+          tbody.append(tr); i++;
+        }
+        table.append(tbody); wrap.append(table); container.append(wrap); continue;
+      }
+      if (trimmed.startsWith('>')) {
+        flushPara();
+        const quote = document.createElement('blockquote'); quote.className = 'bc-quote';
+        const qLines = [];
+        while (i < lines.length && lines[i].trim().startsWith('>')) { qLines.push(lines[i].trim().replace(/^>\s?/, '')); i++; }
+        renderRichText(quote, qLines.join('\n'));
+        container.append(quote); continue;
+      }
+      if (/^\s{0,4}(?:[-*•])\s+/.test(line)) {
+        flushPara();
+        const ul = document.createElement('ul'); ul.className = 'bc-list';
+        let lastLi = null;
+        while (i < lines.length) {
+          const itemMatch = lines[i].match(/^\s{0,4}(?:[-*•])\s+(.+)$/);
+          if (itemMatch) {
+            const li = document.createElement('li'); appendInlineNodes(li, itemMatch[1]);
+            ul.append(li); lastLi = li; i++;
+          } else if (lastLi && /^\s{2,}\S/.test(lines[i]) && !/^\s{0,4}(?:\d+[.)]|[-*•])\s+/.test(lines[i])) {
+            const sub = document.createElement('div'); sub.className = 'bc-li-sub';
+            appendInlineNodes(sub, lines[i].trim()); lastLi.append(sub); i++;
+          } else break;
+        }
+        container.append(ul); continue;
+      }
+      if (/^\s{0,4}\d+[.)]\s+/.test(line)) {
+        flushPara();
+        const ol = document.createElement('ol'); ol.className = 'bc-list bc-ol';
+        let lastLi = null;
+        while (i < lines.length) {
+          const itemMatch = lines[i].match(/^\s{0,4}\d+[.)]\s+(.+)$/);
+          if (itemMatch) {
+            const li = document.createElement('li'); appendInlineNodes(li, itemMatch[1]);
+            ol.append(li); lastLi = li; i++;
+          } else if (lastLi && /^\s{2,}\S/.test(lines[i]) && !/^\s{0,4}(?:\d+[.)]|[-*•])\s+/.test(lines[i])) {
+            const sub = document.createElement('div'); sub.className = 'bc-li-sub';
+            appendInlineNodes(sub, lines[i].trim()); lastLi.append(sub); i++;
+          } else break;
+        }
+        container.append(ol); continue;
+      }
+      para.push(line); i++;
+    }
+    flushPara();
+  }
+  function setMessageText(nodeOrEl, text, role) {
+    const el = nodeOrEl?.classList?.contains('business-message-text') ? nodeOrEl : nodeOrEl?.querySelector?.('.business-message-text');
+    if (!el) return null;
+    const resolvedRole = role || (nodeOrEl?.classList?.contains('user') || el.closest?.('.business-message.user') ? 'user' : 'assistant');
+    if (resolvedRole === 'user') { el.textContent = text || ''; return el; }
+    renderRichText(el, text || '');
+    return el;
+  }
   function addMessage(text, role, offerConnection = false, restored = null) {
     const record=restored||{text,role};
     if(!restored){transcript.push(record);transcript=transcript.slice(-300);persist();}
     const node = document.createElement('div');
     node.chatRecord=record;
     node.className = 'business-message ' + role;
-    const messageText = document.createElement('span');
-    messageText.className = 'business-message-text'; messageText.textContent = text;
+    const messageText = document.createElement('div');
+    messageText.className = 'business-message-text'; setMessageText(messageText, text, role);
     node.append(messageText);
     if (offerConnection) {
       const button = document.createElement('button');
@@ -378,7 +549,7 @@
       if (id !== epoch) return;
       const node = inlineNode||addMessage(data.tasks ? data.response.split('\n')[0] : data.response, 'assistant');
       if(inlineNode){
-        node.querySelector('.business-message-text').textContent=data.response;
+        setMessageText(node, data.response, 'assistant');
         if(node.chatRecord)node.chatRecord.text=data.response;
         node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());
       }
@@ -413,14 +584,14 @@
       if (id === epoch) {
         const message=error.message || 'AI se jawab nahi aa paya. Dobara try karein.';
         const node=inlineNode||addMessage(message,'assistant');
-        if(inlineNode){node.querySelector('.business-message-text').textContent=message;node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());if(node.chatRecord)node.chatRecord.text=message;}
+        if(inlineNode){setMessageText(node, message, 'assistant');node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());if(node.chatRecord)node.chatRecord.text=message;}
         if(agentTask){
           // Refresh only the task status; never replay a rejected selection.
           try{
             const refreshed=await window.fetchWithAuth('/api/v1/business/tasks/'+encodeURIComponent(agentTask.task_id));
             if(!refreshed.ok)throw new Error('Task status unavailable');
             if(refreshed.ok&&id===epoch){const current=await refreshed.json();current.response=message+'\n'+current.response;
-              node.querySelector('.business-message-text').textContent=current.response;
+              setMessageText(node, current.response, 'assistant');
               if(node.chatRecord)node.chatRecord.text=current.response;
               renderTools(node,current,text);}
           }catch{/* retain current task identity even if status transport fails */
@@ -458,7 +629,7 @@
         if(!response.ok)return;
         const current=await response.json();
         if(taskEpoch!==epoch||!node.isConnected||messages.lastElementChild!==node||current.purchase_assistant?.revision!==revision)return;
-        const text=node.querySelector('.business-message-text');if(text)text.textContent=current.response;
+        setMessageText(node, current.response, 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());
         renderTools(node,current,originalText);
@@ -477,7 +648,7 @@
         const dots=document.createElement('span');dots.className='business-thinking-dots';dots.setAttribute('aria-hidden','true');
         for(let i=0;i<3;i++){const dot=document.createElement('span');dots.append(dot);}
         indicator.append(dots);taskText.append(indicator);
-      }else if(data.task_id&&data.response){taskText.textContent=data.response;}
+      }else if(data.task_id&&data.response){setMessageText(taskText, data.response, 'assistant');}
     }
     watchAgentTask(node,data,originalText);
     trackPurchaseReview(data);
@@ -511,7 +682,7 @@
         const current=await response.json();
         if(!response.ok)throw new Error(typeof current.detail==='string'?current.detail:'Retry unavailable; reload chat.');
         if(marker!==epoch||!node.isConnected)return;
-        node.querySelector('.business-message-text').textContent=current.response;
+        setMessageText(node, current.response, 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(t=>t.remove());renderTools(node,current,originalText);
       });
@@ -522,7 +693,7 @@
         const response=await window.fetchWithAuth('/api/v1/business/routing/'+encodeURIComponent(data.route_id));
         if(!response.ok||checkEpoch!==epoch||!node.isConnected)return;
         const current=await response.json();
-        node.querySelector('.business-message-text').textContent=current.response;
+        setMessageText(node, current.response, 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(t=>t.remove());renderTools(node,current,originalText);
       });
@@ -542,7 +713,8 @@
     const messageText = node.querySelector('.business-message-text');
     schedulePurchaseContext(node,data,originalText);
     window.renderBusinessTally?.(tools, data, {submit:data.task_id?(text,spoken=false,command={})=>submit(text,spoken,{...command,task_id:data.task_id,expected_revision:data.task_revision,task_inline:true}):submit, toolButton, connect,
-      updateMessage:messageText ? text=>{messageText.textContent=text;if(node.chatRecord){node.chatRecord.text=text;persist();}return messageText;} : undefined,
+      renderMessageText:messageText ? text=>setMessageText(messageText,text,'assistant') : undefined,
+      updateMessage:messageText ? text=>{setMessageText(messageText,text,'assistant');if(node.chatRecord){node.chatRecord.text=text;persist();}return messageText;} : undefined,
       updateState:result=>{if(node.chatRecord){node.chatRecord.data={...node.chatRecord.data,...result};persist();}},
       renderResult:(target,result)=>renderTools(target,result,originalText)});
     if (data.choices) {
@@ -620,7 +792,7 @@
       if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Action complete nahi hua. Status check karein.');
       const resultNode = taskData.task_id?[...messages.children].find(n=>[...n.querySelectorAll('.business-preview-card')].includes(card)):null;
       const target=resultNode||addMessage(data.response,'assistant');
-      if(resultNode){target.querySelector('.business-message-text').textContent=data.response;if(target.chatRecord)target.chatRecord.text=data.response;target.querySelectorAll('.business-tools').forEach(tool=>tool.remove());}
+      if(resultNode){setMessageText(target, data.response, 'assistant');if(target.chatRecord)target.chatRecord.text=data.response;target.querySelectorAll('.business-tools').forEach(tool=>tool.remove());}
       renderTools(target, data, 'Status check'); history.push({role:'assistant',content:data.response.slice(0,4000)}); history = history.slice(-10);
       status.textContent = '';
     } catch (error) {
@@ -684,7 +856,7 @@
         }).then(async response=>{if(!response.ok)return;const result=await response.json();if(id!==epoch)return;
           record.text=result.response||record.text;record.data={...record.data,...result};
           if(result.sync_status&&result.sync_status!=='draft'&&!result.preview)delete record.data.preview;
-          node.querySelector('.business-message-text').textContent=record.text;
+          setMessageText(node, record.text, record.role);
           node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());renderTools(node,record.data,record.originalText);
         }).catch(()=>{});
       }

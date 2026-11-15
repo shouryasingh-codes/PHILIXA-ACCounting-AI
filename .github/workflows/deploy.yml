@@ -1,31 +1,46 @@
-name: Deploy to Azure VM
+name: Deploy Philixa 6.0 to Azure VM
 
 on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
+jobs:
+  verify:
+    runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax across app and scripts
+        run: python3 -m compileall -q app scripts
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH to Azure VM
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
+          command_timeout: 15m
           script: |
+            set -euo pipefail
             cd ~/philixa
-            git pull origin main
-            
-            # Cleanly stop existing containers to avoid the ContainerConfig recreation bug
-            sudo docker-compose down
-            # Rebuild images if needed and restart all containers
-            sudo docker-compose up -d --build
-            
-            # Ensure the iptables port routing is active
-            sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8000 || true
+            git pull --ff-only origin main
 
+            sudo docker compose -f docker-compose.prod.yml build app
+            sudo docker compose -f docker-compose.prod.yml up -d
 
+            sudo iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8000 2>/dev/null || \
+              sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8000
+
+            curl --retry 15 --retry-delay 2 --retry-all-errors -sf http://127.0.0.1:8000/health
+            echo ""
+            sudo docker image prune -f

@@ -67,6 +67,17 @@ def quota_wait(state,exc,stamp):
         result.update(status='needs_input',summary='Task saved hai—Resume karein.' if exc.reason!='request_too_large' else 'Task saved hai. Context bahut bada hai; narrower details se resume karein.')
     return result
 
+def seed_entry_context(state):
+    """Expose purchase tools and seed purchase_context only when an attached document draft needs validation."""
+    from app.services.intent_router import is_bill_entry_intent
+    has_entry = state.get('outcome') == 'verified_entry' or any(is_bill_entry_intent(m) for m in state.get('messages', []))
+    if state.get('draft_id') and has_entry:
+        state['outcome'] = 'verified_entry'
+        state['tool_groups'] = list(dict.fromkeys([*state.get('tool_groups', []), 'documents', 'purchase']))
+        if state.get('attachment_document_ids') and not state.get('routing_first_step') and not state.get('executions'):
+            state['routing_first_step'] = {'kind': 'tool', 'tool': 'purchase_context', 'arguments': {'draft_id': state['draft_id']}, 'summary': 'Saved bill ki purchase validation check kar rahi hoon.'}
+
+
 async def execute_agent_task(ctx, task_id, expected_revision=None):
     if os.getenv('PHILIXA_TASK_AGENT_ENABLED','0') != '1':
         return
@@ -200,13 +211,7 @@ async def execute_agent_task(ctx, task_id, expected_revision=None):
                     await persist(state)
                     return
                 state['status']='running'
-            from app.services.intent_router import is_bill_entry_intent
-            has_entry = state.get('outcome') == 'verified_entry' or any(is_bill_entry_intent(m) for m in state.get('messages', []))
-            if state.get('draft_id') and has_entry:
-                state['outcome'] = 'verified_entry'
-                state['tool_groups'] = list(dict.fromkeys([*state.get('tool_groups', []), 'documents', 'purchase']))
-                if not state.get('routing_first_step') and not state.get('executions'):
-                    state['routing_first_step'] = {'kind': 'tool', 'tool': 'purchase_context', 'arguments': {'draft_id': state['draft_id']}, 'summary': 'Saved bill ki purchase validation check kar rahi hoon.'}
+            seed_entry_context(state)
             if state.get('attachment_document_ids'):
                 state['tool_groups']=list(dict.fromkeys([*state.get('tool_groups',[]),'documents',*(['purchase'] if state.get('draft_id') and state.get('outcome')!='answer' else [])]))
                 from app.services.chat_attachments import source_context

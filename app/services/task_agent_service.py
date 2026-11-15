@@ -88,11 +88,15 @@ def view(row):
     state = row.state
     observations = state.get('observations', [])
     latest = observations[-1].get('data', {}) if observations else {}
+    proposal_data = latest if ('proposal' in latest or any(k in latest for k in ('preview', 'stock_results', 'mcp_report'))) else next(
+        (o.get('data', {}) for o in reversed(observations) if isinstance(o.get('data'), dict) and 'proposal' in o['data']), latest
+    )
+    merged_obs = {**proposal_data, **latest} if proposal_data is not latest else latest
     # Only server-produced presentation fields, never model-authored controls.
-    presentation = {key:latest[key] for key in ('preview','proposal','evidence_version',
+    presentation = {key:merged_obs[key] for key in ('preview','proposal','evidence_version',
         'gst_purchase_draft','tally_action','sync_status','tally_status','mcp_report','mcp_form',
         'mcp_catalog','stock','stock_results','coverage','data_source','purchase_assistant',
-        'purchase_context','purchase_details','suggestions','goods_receipt','receipt_ready','situation_choices','purchase_situation','repeat_purchase') if key in latest}
+        'purchase_context','purchase_details','suggestions','goods_receipt','receipt_ready','situation_choices','purchase_situation','repeat_purchase') if key in merged_obs}
     if state.get('details_unknown'):
         presentation_summary=state['summary']
     elif (presentation.get('purchase_assistant') or presentation.get('stock_results')) and latest.get('response') and not state.get('wait_reason') and not any(

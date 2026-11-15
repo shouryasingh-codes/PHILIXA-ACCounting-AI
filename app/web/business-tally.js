@@ -7,6 +7,7 @@
   const top=document.getElementById('businessConnectionTop');
   top.lastChild.textContent=' Connection settings';
   let generation=0, saved=null, pollBusy=false, verifyBusy=false, lastVerify=0, pendingDiscovery=false;
+  const pendingInvByDraft=new Map();
   const readStatus=document.getElementById('tallyReadStatus');
   const access=document.getElementById('tallyCompanyAccess');
   const companyList=document.getElementById('tallyCompanyList');
@@ -798,6 +799,8 @@
       const send=document.createElement('button');send.type='submit';send.textContent='Confirm details · final review';form.append(send);
       form.addEventListener('submit',event=>{event.preventDefault();
         if(typeof form.reportValidity==='function'&&!form.reportValidity())return;
+        const dKey=data.draft_id||data.gst_purchase_draft?.id;
+        if(dKey&&invInline&&invInline.value.trim())pendingInvByDraft.set(dKey,invInline.value.trim());
         const parts=controls.map(read=>read()).filter(Boolean);if(correction.value.trim())parts.push(correction.value.trim());
         if(parts.length)submit(parts.join('. ')+'. Details save karke available final preview dikhao.');
       });
@@ -819,7 +822,7 @@
         if(opts.maxLength)input.maxLength=opts.maxLength;if(opts.step)input.step=opts.step;if(opts.min!==undefined)input.min=opts.min;
         label.append(input);form.append(label);return input;
       }
-      const invInput=makeField('Invoice / Bill number','text',content.invoice_number||'',{required:true,maxLength:100,placeholder:'e.g. INV-2026-001',half:true});
+      const invInput=makeField('Invoice / Bill number','text',content.invoice_number||pendingInvByDraft.get(draftId)||'',{required:true,maxLength:100,placeholder:'e.g. INV-2026-001',half:true});
       const dateLabel=document.createElement('label');dateLabel.className='purchase-field-half';dateLabel.textContent='Bill date';
       const dateWrap=document.createElement('div');dateWrap.className='purchase-date-row';
       const dateInput=document.createElement('input');dateInput.type='date';dateInput.required=true;dateInput.value=content.entry_date||facts.received_on?.value||'';

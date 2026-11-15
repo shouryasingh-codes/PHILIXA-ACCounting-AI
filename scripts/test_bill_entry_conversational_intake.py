@@ -221,6 +221,73 @@ class BillEntryIntakeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('6 stock items missing', result['summary'])
         self.assertIn('Kya main Tally me TimeNet Solutions ka Sundry Creditor ledger bana doon ya kisi existing ledger se map karna hai?', result['summary'])
 
+    async def test_text_purchase_resume_without_attachment_does_not_fail_routing_seed(self):
+        from app.jobs.task_agent_jobs import seed_entry_context
+
+        class ContextArgs(BaseModel):
+            draft_id: str
+
+        async def execute(args):
+            return ToolResult(status='ok', data={})
+
+        async def dummy_choose(*args):
+            return {'kind': 'needs_input', 'tool': None, 'arguments': {}, 'summary': 'Need invoice details', 'user_response': 'Invoice details confirm karein.'}
+
+        async def dummy_persist(state):
+            pass
+
+        async def dummy_budget():
+            pass
+
+        async def dummy_auth(args):
+            pass
+
+        tool = Tool('purchase_context', 'Context', ContextArgs, 'draft', dummy_auth, execute)
+        state = {
+            'messages': ['Supplier se 2 bags Cement 100 rate par kharide', 'Bill mil gaya. Maal aa gaya.'],
+            'draft_id': 'text_draft_123',
+            'executions': [],
+        }
+        seed_entry_context(state)
+        self.assertNotIn('routing_first_step', state)
+        result = await run(state, [tool], dummy_choose, dummy_persist, dummy_budget)
+        self.assertEqual(result['status'], 'needs_input')
+        self.assertEqual(result['summary'], 'Invoice details confirm karein.')
+
+    def test_view_preserves_proposal_after_non_proposal_read_observation(self):
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+        from app.services.task_agent_service import view
+
+        stamp = datetime.now(timezone.utc)
+        proposal_payload = {
+            'draft_id': 'd1',
+            'proposal': {'revision': 2, 'company': 'Philixa Test', 'company_gst_enabled': True, 'content': {'party_name': 'Supplier'}},
+            'purchase_situation': {'bill_status': {'value': 'available'}},
+            'gst_purchase_draft': {'id': 'd1'},
+        }
+        row = SimpleNamespace(
+            id='t1',
+            company_id='c1',
+            revision=2,
+            status='needs_input',
+            lease_until=None,
+            updated_at=stamp,
+            state={
+                'draft_id': 'd1',
+                'provider': 'groq',
+                'summary': 'Invoice details confirm karein.',
+                'observations': [
+                    {'status': 'ok', 'data': proposal_payload},
+                    {'status': 'ok', 'data': {'id': 'd1', 'revision': 2, 'content': {'party_name': 'Supplier'}}},
+                ],
+            },
+        )
+        out = view(row)
+        self.assertIn('proposal', out)
+        self.assertEqual(out['proposal']['company'], 'Philixa Test')
+        self.assertEqual(out['purchase_situation']['bill_status']['value'], 'available')
+
 
 if __name__ == '__main__':
     unittest.main()

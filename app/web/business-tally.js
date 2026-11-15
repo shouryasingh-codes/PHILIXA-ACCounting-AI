@@ -246,7 +246,7 @@
   refreshConnectionBadge();
   setInterval(refreshConnectionBadge,10000);
   document.addEventListener('visibilitychange',refreshConnectionBadge);
-  window.renderBusinessTally=(tools,data,{submit,toolButton,connect,renderResult,updateMessage,updateState})=>{
+  window.renderBusinessTally=(tools,data,{submit,toolButton,connect,renderResult,updateMessage,updateState,renderMessageText})=>{
     const hasIdentityBlockers=(data.issues||[]).some(i=>i.kind==='identity');
     const singleCard=!!(data.task_id&&(data.proposal||data.preview));
     if(singleCard){
@@ -480,7 +480,7 @@
         });
       }
       tools.append(card);
-      if(hasList&&context.renderMessageText){
+      if(hasList&&renderMessageText){
         const partial=results.some(r=>r.status==='unavailable'||r.status==='ambiguous');
         const hasSaved=results.some(r=>r.data_source==='saved');
         const summary=partial
@@ -488,7 +488,7 @@
           :hasSaved
             ?`Aapke Tally mein **${totalItems} stock items** hain (last synced data ke saath) — neeche puri list dekh sakte hain:`
             :`Aapke live Tally mein **${totalItems} stock items** mile — neeche closing stock ke saath puri list hai:`;
-        context.renderMessageText(summary);
+        renderMessageText(summary);
       }
     }
     if(data.purchase_setup)toolButton(tools,'Purchase entry setup',()=>window.openBusinessPurchaseSetup(data.purchase_setup.company));

@@ -228,5 +228,21 @@ class Durable(unittest.IsolatedAsyncioTestCase):
         resumed=await build().ainvoke(None,config=config,durability='sync')
         self.assertEqual(resumed['value'],'finished');self.assertEqual(calls.count('first'),1)
 
+    async def test_proposal_includes_master_defaults_without_mutating_draft(self):
+        row=await self.create()
+        draft=await drafts.scoped_draft(self.db,self.principal,row['id'])
+        draft.content={**draft.content,'lines':[{**draft.content['lines'][0],'rate':'350'}]}
+        draft.extraction_metadata={**(draft.extraction_metadata or {}),'purchase_situation':{
+            'rate_basis':{'value':'exclusive'},'received_on':{'value':'2026-10-01'}}}
+        await self.db.commit()
+        with patch.object(native,'context',AsyncMock(return_value={'status':'ready','suggestions':[],'evidence_version':'native-v1'})):
+            result=await agent.state(self.db,self.principal,row['id'])
+        defaults=result['proposal']['master_defaults']
+        self.assertEqual(defaults['supplier_gstin'],fixture.gstin('06','ABCPF1234G'))
+        self.assertEqual(defaults['lines'],[{'gst_rate':'18','hsn':'2523'}])
+        saved=(await drafts.read_draft(self.db,self.principal,row['id']))['content']
+        self.assertIsNone(saved.get('supplier_gstin'))
+        self.assertIsNone(saved['lines'][0].get('gst_rate'))
+
 
 if __name__=='__main__':unittest.main()

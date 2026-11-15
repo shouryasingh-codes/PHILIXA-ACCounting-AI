@@ -85,10 +85,11 @@ async def identity_history(db,principal,row,catalog,identities):
     return {'status':'needs_identity','suggestions':[]}
 
 async def state(db,principal,draft_id,prefix=''):
-    from app.services.purchase_conversation import frozen,prepare
+    from app.services.purchase_conversation import frozen,prepare,gst_master_defaults
     from app.services.purchase_memory_service import catalog_for
     from app.database.session import AsyncSessionLocal
     from app.services.purchase_checkpoint import PurchaseSaver
+    from app.models.tally import TallyConnection
     principal=frozen(principal)
     row=await drafts.scoped_draft(db,principal,draft_id,lock=True)
     await drafts.editable_action(db,row,row.revision)
@@ -101,6 +102,9 @@ async def state(db,principal,draft_id,prefix=''):
     row,identities=await resolve(db,principal,row,catalog)
     row,catalog,master_notes=await prepare(db,principal,row)
     content=copy.deepcopy(row.content);revision=row.revision
+    cfg=await db.get(TallyConnection,principal.organization_id)
+    purchase_ledger_name=cfg.purchase_ledger if cfg and cfg.company==company.name else None
+    situation=(row.extraction_metadata or {}).get('purchase_situation',{})
     snapshot=await sync.saved_snapshot(db,company)
     snapshot_generation=snapshot.generation if snapshot else None
     await db.commit() # No draft row lock held while tools perform read-only network IO.
@@ -155,20 +159,25 @@ async def state(db,principal,draft_id,prefix=''):
                     source_type='tally_master' if key=='supplier_gstin' else 'saved_draft',observed_at=row.updated_at.isoformat(),draft_revision=revision))
         company_gst_enabled=not catalog.get('non_gst',True)
         company_state_code=None
+        master_defaults=None
+        stamp=content.get('entry_date') or (situation.get('received_on') or {}).get('value') or datetime.now(ZoneInfo('Asia/Kolkata')).date().isoformat()
         if company_gst_enabled:
             from app.services import tally_gst_purchase as gst
             from app.services.tally_connector import name as xml_name
             try:
                 units=gst.gst_units(catalog)
                 native_comp=next((r for r in catalog.get('companies',[]) if xml_name(r)==company.name),None)
-                stamp=content.get('entry_date') or datetime.now(ZoneInfo('Asia/Kolkata')).date().isoformat()
                 if native_comp is not None or units:
                     company_state_code=gst.gstin_state(gst.registration(units[0] if units else native_comp,stamp))
             except TallyError:
                 company_state_code=None
+            if (situation.get('rate_basis') or {}).get('value')!='no_gst_charged':
+                defaults=gst_master_defaults(catalog,content,company.name,purchase_ledger_name,stamp)
+                master_defaults={'supplier_gstin':defaults['supplier_gstin'],'lines':defaults['lines']}
         return {'calls':step(s,'prepare_proposal',{'revision':revision,'content':content}),
             'proposal':dict(company=company.name,company_id=company.id,content=content,revision=revision,
                 company_gst_enabled=company_gst_enabled,company_state_code=company_state_code,
+                master_defaults=master_defaults,
                 totals={**totals,'source':'calculated','invoice_total':content.get('invoice_total')},provenance=provenance,
                 evidence_version=digest([revision,content,evidence.get('evidence_version'),snapshot_generation]),
                 can_prepare_preview=not s['issues'])}

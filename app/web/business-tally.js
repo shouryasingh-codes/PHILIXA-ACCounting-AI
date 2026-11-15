@@ -832,12 +832,14 @@
       let gstinInput=null, posInput=null, totalInput=null, lineInputs=[], taxDisplay=null, userEditedTotal=false;
       const round2=n=>Math.round((Number(n)+Number.EPSILON)*100)/100;
       if(isGst){
-        gstinInput=makeField('Supplier GSTIN','text',content.supplier_gstin||'',{required:true,maxLength:15,placeholder:'15-digit GSTIN',half:true});
+        const md=data.proposal.master_defaults||{};
+        gstinInput=makeField('Supplier GSTIN','text',content.supplier_gstin||md.supplier_gstin||'',{required:true,maxLength:15,placeholder:'15-digit GSTIN',half:true});
         posInput=makeField('Place of supply (State code)','text',content.place_of_supply||data.proposal.company_state_code||'',{required:true,maxLength:2,placeholder:'e.g. 08',half:true});
         lineInputs=(content.lines||[]).map((line,idx)=>{
+          const ld=(md.lines||[])[idx]||{};
           const qty=Number(line.quantity||0);
           const rateVal=line.rate??'';
-          const gstRateVal=line.gst_rate??'';
+          const gstRateVal=line.gst_rate??ld.gst_rate??'';
           const taxableVal=line.taxable_amount??(line.rate!=null&&qty?round2(qty*Number(line.rate)).toFixed(2):'');
           const box=document.createElement('div');box.className='purchase-line-edit';
           const title=document.createElement('div');title.className='purchase-line-edit-title';title.textContent=`${line.item_name||'Item '+(idx+1)} (${line.quantity||''} ${line.unit||''})`;box.append(title);
@@ -846,7 +848,7 @@
           const rateInp=cell('Rate ₹',rateVal,'number',{required:true,step:'0.01',min:'0.01'});
           const taxableInp=cell('Taxable ₹',taxableVal,'number',{required:true,step:'0.01',min:'0.01'});
           const gstInp=cell('GST %',gstRateVal,'number',{required:true,step:'0.01',min:'0'});
-          const hsnInp=cell('HSN',line.hsn||'','text',{required:true,maxLength:8});
+          const hsnInp=cell('HSN',line.hsn||ld.hsn||'','text',{required:true,maxLength:8});
           box.append(sub);form.append(box);
           return {line,qty,rateInp,taxableInp,gstInp,hsnInp};
         });

@@ -50,6 +50,37 @@ def adjustments_known(content):
                *[l.get(k) for l in content['lines'] for k in ('discount_amount','discount_percent')]])
 
 
+def gst_master_defaults(catalog,content,company_name,purchase_ledger_name,stamp):
+    """Look up supplier GSTIN and line GST rate/HSN from Tally masters for a given date without mutating content."""
+    out={'supplier_gstin':None,'lines':[{} for _ in (content.get('lines') or [])],'notes':[]}
+    party=exact(catalog.get('ledgers',[]),content.get('party_name'))
+    if party is not None:
+        try:
+            history=party.findall('LEDGSTREGDETAILS.LIST')
+            detail=gst.effective(history,stamp)
+            if history and detail is None:raise TallyError('Supplier GST registration missing for invoice date.')
+            source=detail if detail is not None else party
+            if value(source,'GSTREGISTRATIONTYPE').casefold()!='regular':raise TallyError('Supplier registration requires review.')
+            number=value(source,'GSTIN') if history else value(party,'PARTYGSTIN')
+            gst.gstin_state(number)
+        except TallyError:
+            # Optional enrichment must not abort a saved conversation. Do not
+            # fall back to today's GSTIN when historical master dates are invalid.
+            out['notes'].append('Supplier GST details Tally se verify nahi hui. Bill se check karna hoga; posting se pehle validation zaroori hai.')
+        else:
+            out['supplier_gstin']=number
+    purchase=exact(catalog.get('ledgers',[]),purchase_ledger_name) if purchase_ledger_name else None
+    native=exact(catalog.get('companies',[]),company_name)
+    if purchase is not None and native is not None:
+        for index,line in enumerate(content.get('lines') or []):
+            item=exact(catalog.get('items',[]),line.get('item_name'))
+            if item is None:continue
+            try:rate,hsn,_,_=gst.master_rate(catalog,item,purchase,native,stamp)
+            except (TallyError,ValueError,TypeError):continue
+            out['lines'][index]={'gst_rate':str(rate),'hsn':hsn}
+    return out
+
+
 async def prepare(db,principal,row):
     company=await drafts.company_for(db,principal,row.company_id)
     catalog=await catalog_for(db,company)
@@ -73,33 +104,16 @@ async def prepare(db,principal,row):
                     suggestions.append(f'Item {index+1}: bag/bags spelling ko exact Tally unit {unit} se resolve kiya; quantity unchanged.')
     cfg=await db.get(TallyConnection,principal.organization_id)
     if content.get('tax_treatment') and content.get('entry_date') and cfg and cfg.company==company.name:
-        stamp=content['entry_date']
-        party=exact(catalog['ledgers'],content.get('party_name'))
-        if party is not None:
-            try:
-                history=party.findall('LEDGSTREGDETAILS.LIST')
-                detail=gst.effective(history,stamp)
-                if history and detail is None:raise TallyError('Supplier GST registration missing for invoice date.')
-                source=detail if detail is not None else party
-                if value(source,'GSTREGISTRATIONTYPE').casefold()!='regular':raise TallyError('Supplier registration requires review.')
-                number=value(source,'GSTIN') if history else value(party,'PARTYGSTIN')
-                gst.gstin_state(number)
-            except TallyError:
-                # Optional enrichment must not abort a saved conversation. Do not
-                # fall back to today's GSTIN when historical master dates are invalid.
-                suggestions.append('Supplier GST details Tally se verify nahi hui. Bill se check karna hoga; posting se pehle validation zaroori hai.')
-            else:
-                if not content.get('supplier_gstin'):content['supplier_gstin']=number;suggestions.append('Supplier GSTIN: '+number+' (Tally master)')
-        purchase=exact(catalog['ledgers'],cfg.purchase_ledger)
-        native=exact(catalog.get('companies',[]),company.name)
-        if purchase is not None and native is not None:
-            for index,line in enumerate(lines):
-                item=exact(catalog['items'],line.get('item_name'))
-                if item is None:continue
-                try:rate,hsn,_,_=gst.master_rate(catalog,item,purchase,native,stamp)
-                except (TallyError,ValueError,TypeError):continue
-                for key,val in [('gst_rate',str(rate)),('hsn',hsn)]:
-                    if line.get(key) is None:line[key]=val;suggestions.append(f'Item {index+1} {key}: {val} (Tally master; bill se check karein)')
+        defaults=gst_master_defaults(catalog,content,company.name,cfg.purchase_ledger,content['entry_date'])
+        suggestions.extend(defaults['notes'])
+        if defaults['supplier_gstin'] and not content.get('supplier_gstin'):
+            content['supplier_gstin']=defaults['supplier_gstin']
+            suggestions.append('Supplier GSTIN: '+defaults['supplier_gstin']+' (Tally master)')
+        for index,line in enumerate(lines):
+            for key,val in defaults['lines'][index].items():
+                if line.get(key) is None:
+                    line[key]=val
+                    suggestions.append(f'Item {index+1} {key}: {val} (Tally master; bill se check karein)')
     if content!=row.content:
         previous=await drafts.editable_action(db,row,row.revision)
         if previous and previous.status=='preview':previous.status='expired'

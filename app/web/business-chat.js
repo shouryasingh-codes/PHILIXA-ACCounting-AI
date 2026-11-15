@@ -106,7 +106,7 @@
         if(!response.ok)throw new Error('Task status unavailable; retry status check.');
         const current=await response.json();
         if(marker!==epoch||scope!==activeScope||!node.isConnected)return;
-        setMessageText(node, current.response, 'assistant');
+        setMessageText(node, displayTextFor(current, current.response), 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(t=>t.remove());
         renderTools(node,current,originalText);
@@ -451,6 +451,19 @@
     }
     flushPara();
   }
+  function displayTextFor(data, text) {
+    const results = data?.stock_results;
+    if (Array.isArray(results) && results.some(r => r.status === 'all' && r.items?.length)) {
+      const totalItems = results.reduce((sum, r) => sum + (r.status === 'all' && r.items ? r.items.length : 0), 0);
+      const partial = results.some(r => r.status === 'unavailable' || r.status === 'ambiguous');
+      const hasSaved = results.some(r => r.data_source === 'saved');
+      if (partial) return `Verified companies mein **${totalItems} stock items** mile — kuch companies verify nahi ho payin; details neeche hain:`;
+      if (hasSaved) return `Aapke Tally mein **${totalItems} stock items** hain (last synced data ke saath) — neeche puri list dekh sakte hain:`;
+      return `Aapke live Tally mein **${totalItems} stock items** mile — neeche closing stock ke saath puri list hai:`;
+    }
+    if (data?.tasks && typeof text === 'string') return text.split('\n')[0];
+    return text;
+  }
   function setMessageText(nodeOrEl, text, role) {
     const el = nodeOrEl?.classList?.contains('business-message-text') ? nodeOrEl : nodeOrEl?.querySelector?.('.business-message-text');
     if (!el) return null;
@@ -459,14 +472,15 @@
     renderRichText(el, text || '');
     return el;
   }
-  function addMessage(text, role, offerConnection = false, restored = null) {
+  function addMessage(text, role, offerConnection = false, restored = null, data = null) {
     const record=restored||{text,role};
     if(!restored){transcript.push(record);transcript=transcript.slice(-300);persist();}
     const node = document.createElement('div');
     node.chatRecord=record;
     node.className = 'business-message ' + role;
     const messageText = document.createElement('div');
-    messageText.className = 'business-message-text'; setMessageText(messageText, text, role);
+    const visualText = role === 'user' ? text : displayTextFor(restored?.data || data, text);
+    messageText.className = 'business-message-text'; setMessageText(messageText, visualText, role);
     node.append(messageText);
     if (offerConnection) {
       const button = document.createElement('button');
@@ -547,9 +561,9 @@
       }
       const data = await response.json();
       if (id !== epoch) return;
-      const node = inlineNode||addMessage(data.tasks ? data.response.split('\n')[0] : data.response, 'assistant');
+      const node = inlineNode||addMessage(data.response, 'assistant', false, null, data);
       if(inlineNode){
-        setMessageText(node, data.response, 'assistant');
+        setMessageText(node, displayTextFor(data, data.response), 'assistant');
         if(node.chatRecord)node.chatRecord.text=data.response;
         node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());
       }
@@ -591,7 +605,7 @@
             const refreshed=await window.fetchWithAuth('/api/v1/business/tasks/'+encodeURIComponent(agentTask.task_id));
             if(!refreshed.ok)throw new Error('Task status unavailable');
             if(refreshed.ok&&id===epoch){const current=await refreshed.json();current.response=message+'\n'+current.response;
-              setMessageText(node, current.response, 'assistant');
+              setMessageText(node, displayTextFor(current, current.response), 'assistant');
               if(node.chatRecord)node.chatRecord.text=current.response;
               renderTools(node,current,text);}
           }catch{/* retain current task identity even if status transport fails */
@@ -629,7 +643,7 @@
         if(!response.ok)return;
         const current=await response.json();
         if(taskEpoch!==epoch||!node.isConnected||messages.lastElementChild!==node||current.purchase_assistant?.revision!==revision)return;
-        setMessageText(node, current.response, 'assistant');
+        setMessageText(node, displayTextFor(current, current.response), 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(tool=>tool.remove());
         renderTools(node,current,originalText);
@@ -648,7 +662,7 @@
         const dots=document.createElement('span');dots.className='business-thinking-dots';dots.setAttribute('aria-hidden','true');
         for(let i=0;i<3;i++){const dot=document.createElement('span');dots.append(dot);}
         indicator.append(dots);taskText.append(indicator);
-      }else if(data.task_id&&data.response){setMessageText(taskText, data.response, 'assistant');}
+      }else if(data.task_id&&data.response){setMessageText(taskText, displayTextFor(data, data.response), 'assistant');}
     }
     watchAgentTask(node,data,originalText);
     trackPurchaseReview(data);
@@ -682,7 +696,7 @@
         const current=await response.json();
         if(!response.ok)throw new Error(typeof current.detail==='string'?current.detail:'Retry unavailable; reload chat.');
         if(marker!==epoch||!node.isConnected)return;
-        setMessageText(node, current.response, 'assistant');
+        setMessageText(node, displayTextFor(current, current.response), 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(t=>t.remove());renderTools(node,current,originalText);
       });
@@ -693,7 +707,7 @@
         const response=await window.fetchWithAuth('/api/v1/business/routing/'+encodeURIComponent(data.route_id));
         if(!response.ok||checkEpoch!==epoch||!node.isConnected)return;
         const current=await response.json();
-        setMessageText(node, current.response, 'assistant');
+        setMessageText(node, displayTextFor(current, current.response), 'assistant');
         if(node.chatRecord)node.chatRecord.text=current.response;
         node.querySelectorAll('.business-tools').forEach(t=>t.remove());renderTools(node,current,originalText);
       });

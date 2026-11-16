@@ -730,7 +730,10 @@
       renderMessageText:messageText ? text=>setMessageText(messageText,text,'assistant') : undefined,
       updateMessage:messageText ? text=>{setMessageText(messageText,text,'assistant');if(node.chatRecord){node.chatRecord.text=text;persist();}return messageText;} : undefined,
       updateState:result=>{if(node.chatRecord){node.chatRecord.data={...node.chatRecord.data,...result};persist();}},
-      renderResult:(target,result)=>renderTools(target,result,originalText)});
+      renderResult:(target,result)=>{
+        for(let el=target;el&&el!==node;el=el.parentElement){el.classList?.remove('purchase-answer-controls');el.hidden=false;}
+        renderTools(target,result,originalText);
+      }});
     if (data.choices) {
       data.choices.forEach(customer => toolButton(tools, customer.name, () => submit(originalText || 'Customer details', false,
         {...data.selection_command, client_id: customer.id})));

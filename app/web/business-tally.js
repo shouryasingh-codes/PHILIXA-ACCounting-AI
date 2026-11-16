@@ -912,7 +912,7 @@
           const prevRes=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+encodeURIComponent(draftId)+'/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:currentRevision})});
           const prevData=await prevRes.json().catch(()=>({}));
           if(!prevRes.ok)throw new Error(typeof prevData.detail==='string'?prevData.detail:'Preview taiyar nahi ho paya.');
-          const clean={response:prevData.response,preview:prevData.preview,tally_action:prevData.preview?.token,task_id:null,task_revision:null,proposal:null,issues:[]};
+          const clean={response:prevData.response,preview:prevData.preview,tally_action:prevData.preview?.token,task_id:null,task_revision:null,proposal:null,purchase_assistant:null,issues:[]};
           updateState?.(clean);updateMessage?.(prevData.response);tools.replaceChildren();renderResult?.(tools,clean);
         }catch(error){errBox.textContent=error.message;errBox.hidden=false;}
         finally{if(previewBtn.isConnected){previewBtn.disabled=false;previewBtn.textContent='✓ Confirm & Preview (Tally)';}}

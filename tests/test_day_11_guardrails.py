@@ -117,7 +117,12 @@ async def test_arq_ml_error_boundary(temp_audio_file):
     # Setup mock DB session and factory
     mock_session = AsyncMock()
     # Handle the db.execute(stmt).scalar_one_or_none() chain
-    mock_session.execute.return_value.scalar_one_or_none.return_value = mock_meeting
+    mock_exec_result = MagicMock()
+    mock_exec_result.scalar_one_or_none.return_value = mock_meeting
+    mock_session.execute.return_value = mock_exec_result
+    mock_scalars_result = MagicMock()
+    mock_scalars_result.all.return_value = []
+    mock_session.scalars.return_value = mock_scalars_result
     
     mock_session_factory = MagicMock()
     mock_session_factory.return_value.__aenter__.return_value = mock_session

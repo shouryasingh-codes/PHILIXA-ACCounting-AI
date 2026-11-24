@@ -149,4 +149,35 @@ class Suppliers(unittest.IsolatedAsyncioTestCase):
             result = await suppliers.read_suppliers(fake_db, None, commands.ParsedCommand(intent='supplier_list'))
         self.assertIn('Vendor C\n    Stock/Items: Router (4 Nos @ ₹1500)', result['response'])
 
+    async def test_read_only_live_capture_succeeds_when_refresh_blocked(self):
+        class FakeScalarResult:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def all(self):
+                return self._rows
+
+        fake_db = SimpleNamespace(scalars=AsyncMock(side_effect=[FakeScalarResult([]), FakeScalarResult([])]))
+        with patch.object(suppliers, 'resolve_scope', AsyncMock(return_value=[self.company])), \
+             patch.object(suppliers, 'refresh_company', AsyncMock(return_value=False)), \
+             patch.object(suppliers.sync, 'capture_snapshot', AsyncMock(return_value={'catalog': serialize_catalog(self.catalog)})), \
+             patch.object(suppliers.sync, 'bound_device', AsyncMock(return_value=None)):
+            result = await suppliers.read_suppliers(fake_db, None, commands.ParsedCommand(intent='supplier_list'))
+        self.assertIn('Tally live suppliers', result['response'])
+        self.assertNotIn('Saved Tally suppliers', result['response'])
+        self.assertIn('Sharma Traders', result['response'])
+
+    async def test_fallback_status_preserves_specific_live_failure_reason(self):
+        with patch.object(suppliers, 'resolve_scope', AsyncMock(return_value=[self.company])), \
+             patch.object(suppliers, 'refresh_company', AsyncMock(side_effect=TimeoutError())), \
+             patch.object(suppliers, 'saved_snapshot', AsyncMock(return_value=self.snapshot)):
+            timeout_result = await suppliers.read_suppliers(None, None, commands.ParsedCommand(intent='supplier_list'))
+        self.assertIn('Saved Tally suppliers (live read timeout)', timeout_result['response'])
+
+        with patch.object(suppliers, 'resolve_scope', AsyncMock(return_value=[self.company])), \
+             patch.object(suppliers, 'refresh_company', AsyncMock(side_effect=suppliers.TallyError('Tally closed'))), \
+             patch.object(suppliers, 'saved_snapshot', AsyncMock(return_value=self.snapshot)):
+            closed_result = await suppliers.read_suppliers(None, None, commands.ParsedCommand(intent='supplier_list'))
+        self.assertIn('Saved Tally suppliers (Tally closed)', closed_result['response'])
+
 if __name__=='__main__':unittest.main()

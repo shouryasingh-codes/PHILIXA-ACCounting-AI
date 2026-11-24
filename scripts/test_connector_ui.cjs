@@ -74,8 +74,14 @@ async function flush(){for(let i=0;i<12;i++)await Promise.resolve();}
   assert.equal(node('tallyAdvanced').open,true,'guided setup exposes the existing mappings form');
   assert.equal(node('tallyConnectionForm').elements.company.value,'Remote Practice');
   assert.equal(node('tallyConnectionForm').elements.test_company.checked,false,'must not silently authorise a company as a test company');
-  assert.equal(node('tallyConnectionForm').elements.purchase_ledger.value,'','multiple purchase ledgers require explicit selection');
+  assert.equal(node('tallyConnectionForm').elements.purchase_ledger.value,'Purchase','standard Purchase ledger pre-fills when matched unambiguously');
   assert.equal(node('tallyPurchaseSetup').hidden,false);
+  window.fetchWithAuth=async(url,opts)=>{
+    if(url.endsWith('/test'))return {ok:true,json:async()=>JSON.parse(opts.body).company?{non_gst:true,godowns:['Main Location'],purchase_ledgers:['Local Purchase','Import Purchase'],sales_ledgers:['Sales']}:{companies:['Remote Practice']}};
+    return beforeSetup(url,opts);
+  };
+  await window.openBusinessPurchaseSetup('Remote Practice');
+  assert.equal(node('tallyConnectionForm').elements.purchase_ledger.value,'','ambiguous multiple purchase ledgers require explicit selection');
   node('tallyAdvanced').open=false;
   window.fetchWithAuth=async()=>{throw new Error('Network unavailable');};
   const failedSetup=window.openBusinessPurchaseSetup();

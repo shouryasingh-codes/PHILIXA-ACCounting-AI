@@ -6,6 +6,11 @@ import pytest
 FILE_1 = r"C:\Users\admin\teamwork_projects\founders_hub_research\founders_hub_summary.md"
 FILE_2 = r"c:\Users\admin\Documents\philixa 6.0 2\founders_hub_summary.md"
 
+pytestmark = pytest.mark.skipif(
+    not (os.path.exists(FILE_1) and os.path.exists(FILE_2)),
+    reason="External local Founders Hub research docs are not present in this repository",
+)
+
 def load_docs_bytes():
     assert os.path.exists(FILE_1), f"Primary file missing: {FILE_1}"
     assert os.path.exists(FILE_2), f"Secondary file missing: {FILE_2}"

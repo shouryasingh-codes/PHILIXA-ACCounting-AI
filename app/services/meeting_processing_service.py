@@ -436,6 +436,8 @@ class MeetingProcessingService:
         if not new_items:
             return current_json
         existing = from_json(current_json, [])
+        if not isinstance(existing, list):
+            existing = []
         merged: list[str] = []
         seen: set[str] = set()
         for value in [*existing, *new_items]:

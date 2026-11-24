@@ -1,23 +1,31 @@
 import logging
 import os
-import torch
-import soundfile as sf
+
+try:
+    import torch
+except (ImportError, OSError):
+    torch = None
+
+try:
+    import soundfile as sf
+except (ImportError, OSError):
+    sf = None
 
 try:
     import torchaudio
-except ImportError:
+except (ImportError, OSError):
     torchaudio = None
 
 # torchaudio will automatically fall back to soundfile if torchcodec is uninstalled
 
 try:
     from faster_whisper import WhisperModel
-except ImportError:
+except (ImportError, OSError):
     WhisperModel = None
 
 try:
     from pyannote.audio import Pipeline
-except ImportError:
+except (ImportError, OSError):
     Pipeline = None
 
 from app.core.config import get_settings

@@ -16,8 +16,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install CI dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements-ci.txt
+
       - name: Verify Python syntax across app and scripts
         run: python3 -m compileall -q app scripts
+
+      - name: Run frontend UI controller tests
+        run: |
+          set -euo pipefail
+          for f in scripts/test_*.cjs; do
+            echo "=== $f ==="
+            node "$f"
+          done
+
+      - name: Run pytest suite
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost/test
+        run: python3 -m pytest tests/ -q --tb=short
+
+      - name: Run offline accounting, GST, and MCP unit tests
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost/test
+        run: |
+          set -euo pipefail
+          python3 scripts/test_gst_native_exports.py
+          python3 scripts/test_mcp_write_validation.py
+          python3 scripts/test_repeat_purchase.py
+          python3 scripts/test_tally_suppliers.py
+          python3 -m unittest scripts.test_gst_purchase.Arithmetic scripts.test_gst_purchase.NativeShape scripts.test_multi_purchase.MultiProtocol -v
 
   deploy:
     needs: verify

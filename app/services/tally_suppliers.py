@@ -1,5 +1,6 @@
 """Scoped supplier master reads. No model answers, writes, RAG or generated SQL."""
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
@@ -12,6 +13,24 @@ from app.services.tally_stock import resolve_scope
 from app.services.tally_sync import refresh_company, saved_snapshot
 from app.services.tally_sync_protocol import deserialize_catalog
 from app.services.tally_supplier_codec import supplier_rows
+
+logger = logging.getLogger(__name__)
+
+
+def _fallback_status_text(reason: str | None) -> str:
+    """Map a live-refresh failure reason to an accurate saved-data status label."""
+    text = (reason or '').casefold()
+    if 'helper offline' in text or 'connector offline' in text:
+        return 'Saved Tally suppliers (connector offline)'
+    if 'tally closed' in text:
+        return 'Saved Tally suppliers (Tally closed)'
+    if 'company unavailable' in text:
+        return 'Saved Tally suppliers (company unavailable)'
+    if 'setup needed' in text:
+        return 'Saved Tally suppliers (connector update required)'
+    if 'timeout' in text:
+        return 'Saved Tally suppliers (live read timeout)'
+    return 'Saved Tally suppliers (live unavailable)'
 
 
 def _fmt_qty(val: Decimal) -> str:
@@ -232,15 +251,35 @@ async def read_suppliers(db, principal, parsed):
     lines, choices, results = [], [], []
     for company in scope:
         live = False
+        live_catalog = None
+        live_complete = None
+        fallback_reason = None
         try:
             live = await refresh_company(db, company)
-        except (TallyError, TimeoutError):
-            pass
+        except (TallyError, TimeoutError) as exc:
+            logger.warning("Supplier live refresh failed for company %s: %s", company.name, exc)
+            fallback_reason = 'timeout' if isinstance(exc, TimeoutError) else str(exc)
+        if not live and fallback_reason is None and db is not None:
+            # refresh_company returns False without touching Tally when a lock or uncertain
+            # write blocks publishing; perform a read-only live capture without updating TallySnapshot.
+            try:
+                live_data = await sync.capture_snapshot(db, company)
+                live_catalog = deserialize_catalog(live_data['catalog'])
+                live_complete = 'groups' in live_data['catalog']
+                live = True
+            except (TallyError, TimeoutError) as exc:
+                logger.warning("Read-only live supplier capture failed for company %s: %s", company.name, exc)
+                fallback_reason = 'timeout' if isinstance(exc, TimeoutError) else str(exc)
         try:
-            snapshot = await saved_snapshot(db, company)
-            if not snapshot:
-                raise TallyError('No saved supplier data')
-            catalog = deserialize_catalog(snapshot.catalog)
+            if live_catalog is not None:
+                catalog = live_catalog
+                complete = bool(live_complete)
+            else:
+                snapshot = await saved_snapshot(db, company)
+                if not snapshot:
+                    raise TallyError('No saved supplier data')
+                catalog = deserialize_catalog(snapshot.catalog)
+                complete = 'groups' in snapshot.catalog
             suppliers = supplier_rows(catalog)
             query = (parsed.party_name or '').strip().casefold()
             matches = suppliers
@@ -250,14 +289,15 @@ async def read_suppliers(db, principal, parsed):
             # Re-check grants after transport before releasing ledger data.
             if company.id not in {c.id for c in await resolve_scope(db, principal, parsed)}:
                 raise TallyError('Company access changed')
-            if await saved_snapshot(db, company) is None:
+            if live_catalog is not None:
+                await sync.bound_device(db, company)
+            elif await saved_snapshot(db, company) is None:
                 raise TallyError('Device access changed')
             purchased_by_supplier = await supplier_purchased_items(
                 db, company, [name(l) for l in matches[:100]], catalog=catalog, live=live)
             source = 'live' if live else 'saved'
-            status_text = "Tally live suppliers" if live else "Saved Tally suppliers (live unavailable)"
+            status_text = "Tally live suppliers" if live else _fallback_status_text(fallback_reason)
             lines.append(f"**{company.name}** — {status_text}")
-            complete = 'groups' in snapshot.catalog
             if not complete:
                 lines.append('Older connector: direct Sundry Creditors ledgers only; subgroup coverage unverified. Connector update required for complete list.')
             if not matches:

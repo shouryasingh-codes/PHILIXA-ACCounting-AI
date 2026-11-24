@@ -349,6 +349,17 @@ def client_app() -> Generator[TestClient, None, None]:
             app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> Generator[None, None, None]:
+    from app.core.rate_limit import limiter
+    try:
+        limiter.reset()
+    except Exception:
+        if hasattr(limiter, "_storage") and hasattr(limiter._storage, "reset"):
+            limiter._storage.reset()
+    yield
+
+
 @pytest.fixture()
 def api_headers() -> dict[str, str]:
     """Legacy API Key header fixture."""
@@ -361,10 +372,16 @@ async def async_client(async_db_session: AsyncSession) -> AsyncGenerator[httpx.A
     async def override_get_async_db() -> AsyncGenerator[AsyncSession, None]:
         yield async_db_session
 
+    from app.ai.provider import LocalHeuristicProvider
+    heuristic_provider = LocalHeuristicProvider()
+
     app.dependency_overrides[get_db] = override_get_async_db
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test", cookies={}) as client:
-        yield client
+    with patch("app.ai.provider.get_ai_provider", return_value=heuristic_provider), \
+         patch("app.services.meeting_processing_service.get_ai_provider", return_value=heuristic_provider), \
+         patch("app.services.ai_routing_service.get_ai_provider", return_value=heuristic_provider):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test", cookies={}) as client:
+            yield client
     app.dependency_overrides.clear()
 
 

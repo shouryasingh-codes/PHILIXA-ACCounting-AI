@@ -220,7 +220,7 @@ class TestWorkspaceInvitations:
         async_client.cookies.set("csrf_token", csrf_token)
         async_client.headers["X-CSRF-Token"] = csrf_token
         
-        response = await async_client.post(f"/workspaces/invite/accept?token={raw_token}")
+        response = await async_client.post("/workspaces/invite/accept", json={"token": raw_token})
         assert response.status_code in (200, 201)
         
         # Verify membership created

@@ -85,9 +85,17 @@ def deserialize_catalog(data):
         result[kind] = rows
     return result
 
+class _ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            return super().__exit__(exc_type, exc_val, exc_tb)
+        finally:
+            self.close()
+
+
 def journal(path):
     path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path, timeout=15)
+    db = sqlite3.connect(path, timeout=15, factory=_ClosingConnection)
     db.execute('CREATE TABLE IF NOT EXISTS writes (key TEXT PRIMARY KEY, status TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS snapshots (key TEXT PRIMARY KEY, payload TEXT NOT NULL, created REAL NOT NULL)')
     return db

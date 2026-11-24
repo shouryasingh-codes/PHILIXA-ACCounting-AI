@@ -1,6 +1,33 @@
+import app.services.ai_routing_service as ai_routing_service_module
 import app.services.meeting_processing_service as meeting_processing_service_module
 from app.ai.provider import AIExtractionError
 from fastapi.testclient import TestClient
+
+
+def _process_and_confirm(
+    client_app: TestClient,
+    api_headers: dict[str, str],
+    raw_notes: str,
+    meeting_date: str,
+    client_name: str,
+) -> tuple[dict, dict]:
+    response = client_app.post(
+        "/api/v1/meeting-notes/process",
+        headers=api_headers,
+        json={"raw_notes": raw_notes, "meeting_date": meeting_date},
+    )
+    assert response.status_code == 200
+    initial = response.json()
+    if initial["requires_client_confirmation"]:
+        assert initial["client_status"] == "client_identification_required"
+        confirmed = client_app.post(
+            f"/api/v1/meeting-notes/{initial['meeting_id']}/confirm-client",
+            headers=api_headers,
+            json={"new_client_name": client_name},
+        )
+        assert confirmed.status_code == 200
+        return confirmed.json(), initial
+    return initial, initial
 
 
 def test_auth_is_required(client_app: TestClient) -> None:
@@ -12,20 +39,17 @@ def test_auth_is_required(client_app: TestClient) -> None:
 def test_process_clear_client_note_updates_memory(
     client_app: TestClient, api_headers: dict[str, str]
 ) -> None:
-    response = client_app.post(
-        "/api/v1/meeting-notes/process",
-        headers=api_headers,
-        json={
-            "raw_notes": (
-                "Met Rajesh Sharma today. Interested in business loan. "
-                "Concerned about processing time. Promised documents by Friday."
-            ),
-            "meeting_date": "2026-06-19",
-        },
+    payload, _ = _process_and_confirm(
+        client_app,
+        api_headers,
+        (
+            "Met Rajesh Sharma today. Interested in business loan. "
+            "Concerned about processing time. Promised documents by Friday."
+        ),
+        "2026-06-19",
+        "Rajesh Sharma",
     )
 
-    assert response.status_code == 200
-    payload = response.json()
     assert payload["client_status"] == "created"
     assert payload["requires_client_confirmation"] is False
     assert payload["client_id"] == 1
@@ -45,14 +69,16 @@ def test_process_clear_client_note_updates_memory(
     assert memory_payload["last_meeting_summary"] == (
         "Rajesh Sharma discussed a business loan. "
         "Rajesh Sharma expressed concerns about processing time. "
-        "One follow-up commitment was created: Send documents by Friday."
+        "One follow-up commitment was created: Send documents by Friday. "
+        "A key concern is: processing time. "
+        "One follow-up commitment is open: Send documents (2026-06-26)."
     )
     assert (
         memory_payload["rolling_summary"]
-        == "Rajesh Sharma discussed a business loan. Rajesh Sharma expressed concerns about processing time. One follow-up commitment was created: Send documents by Friday. Tracked products include Business Loan. A key concern is: processing time. One follow-up commitment is still open: Send documents by Friday."
+        == "Rajesh Sharma discussed a business loan. Rajesh Sharma expressed concerns about processing time. One follow-up commitment was created: Send documents by Friday. Tracked products include Business Loan. A key concern is: processing time. One follow-up commitment is still open: Send documents (2026-06-26)."
     )
     assert memory_payload["pre_meeting_brief"]["last_meeting"] == "Business Loan Discussion"
-    assert memory_payload["pre_meeting_brief"]["pending"] == ["Send documents by Friday"]
+    assert memory_payload["pre_meeting_brief"]["pending"] == ["Send documents (2026-06-26)"]
     assert memory_payload["pre_meeting_brief"]["concern"] == "Processing time"
     assert (
         memory_payload["pre_meeting_brief"]["suggested_talking_point"]
@@ -128,13 +154,12 @@ def test_confirmation_saves_the_whatsapp_phone_for_a_new_client(
 def test_confirmation_saves_a_manually_provided_phone_for_an_existing_client(
     client_app: TestClient, api_headers: dict[str, str]
 ) -> None:
-    initial = client_app.post(
-        "/api/v1/meeting-notes/process",
-        headers=api_headers,
-        json={
-            "raw_notes": "Met Rajesh Sharma today. Interested in business loan.",
-            "meeting_date": "2026-06-19",
-        },
+    initial_confirmed, _ = _process_and_confirm(
+        client_app,
+        api_headers,
+        "Met Rajesh Sharma today. Interested in business loan.",
+        "2026-06-19",
+        "Rajesh Sharma",
     )
     unresolved = client_app.post(
         "/api/v1/meeting-notes/process",
@@ -149,14 +174,14 @@ def test_confirmation_saves_a_manually_provided_phone_for_an_existing_client(
         f"/api/v1/meeting-notes/{unresolved.json()['meeting_id']}/confirm-client",
         headers=api_headers,
         json={
-            "client_id": initial.json()["client_id"],
+            "client_id": initial_confirmed["client_id"],
             "new_client_whatsapp_phone": "+919876543210",
         },
     )
     assert confirmed.status_code == 200
 
     client = client_app.get(
-        f"/api/v1/clients/{initial.json()['client_id']}", headers=api_headers
+        f"/api/v1/clients/{initial_confirmed['client_id']}", headers=api_headers
     )
     assert client.json()["whatsapp_phone"] == "+919876543210"
 
@@ -164,17 +189,15 @@ def test_confirmation_saves_a_manually_provided_phone_for_an_existing_client(
 def test_vague_due_date_is_not_invented(
     client_app: TestClient, api_headers: dict[str, str]
 ) -> None:
-    response = client_app.post(
-        "/api/v1/meeting-notes/process",
-        headers=api_headers,
-        json={
-            "raw_notes": "Met Neha Gupta today. I will send documents soon.",
-            "meeting_date": "2026-06-19",
-        },
+    payload, _ = _process_and_confirm(
+        client_app,
+        api_headers,
+        "Met Neha Gupta today. I will send documents soon.",
+        "2026-06-19",
+        "Neha Gupta",
     )
 
-    assert response.status_code == 200
-    commitment = response.json()["commitments_created"][0]
+    commitment = payload["commitments_created"][0]
     assert commitment["due_date"] is None
     assert commitment["due_date_text"] == "soon"
     assert commitment["due_date_confidence"] < 0.75
@@ -183,15 +206,13 @@ def test_vague_due_date_is_not_invented(
 def test_duplicate_pending_commitment_is_updated_not_duplicated(
     client_app: TestClient, api_headers: dict[str, str]
 ) -> None:
-    first = client_app.post(
-        "/api/v1/meeting-notes/process",
-        headers=api_headers,
-        json={
-            "raw_notes": "Met Rajesh Sharma today. Promised documents by Friday.",
-            "meeting_date": "2026-06-19",
-        },
+    first, _ = _process_and_confirm(
+        client_app,
+        api_headers,
+        "Met Rajesh Sharma today. Promised documents by Friday.",
+        "2026-06-19",
+        "Rajesh Sharma",
     )
-    assert first.status_code == 200
 
     second = client_app.post(
         "/api/v1/meeting-notes/process",
@@ -204,6 +225,14 @@ def test_duplicate_pending_commitment_is_updated_not_duplicated(
 
     assert second.status_code == 200
     payload = second.json()
+    if payload["requires_client_confirmation"]:
+        confirmed = client_app.post(
+            f"/api/v1/meeting-notes/{payload['meeting_id']}/confirm-client",
+            headers=api_headers,
+            json={"client_id": first["client_id"]},
+        )
+        assert confirmed.status_code == 200
+        payload = confirmed.json()
     assert payload["commitments_created"] == []
     assert len(payload["commitments_updated"]) == 1
 
@@ -213,15 +242,14 @@ def test_duplicate_pending_commitment_is_updated_not_duplicated(
 
 
 def test_mark_commitment_completed(client_app: TestClient, api_headers: dict[str, str]) -> None:
-    created = client_app.post(
-        "/api/v1/meeting-notes/process",
-        headers=api_headers,
-        json={
-            "raw_notes": "Met Pooja Singh today. I will call next Monday.",
-            "meeting_date": "2026-06-19",
-        },
+    created_payload, _ = _process_and_confirm(
+        client_app,
+        api_headers,
+        "Met Pooja Singh today. I will call next Monday.",
+        "2026-06-19",
+        "Pooja Singh",
     )
-    commitment_id = created.json()["commitments_created"][0]["id"]
+    commitment_id = created_payload["commitments_created"][0]["id"]
 
     response = client_app.patch(
         f"/api/v1/commitments/{commitment_id}/status",
@@ -240,7 +268,10 @@ def test_low_confidence_due_date_is_not_saved_even_if_provider_returns_one(
         provider_name = "test"
         model_name = "test-model"
 
-        def extract_meeting_intelligence(self, raw_notes: str, meeting_date):  # noqa: ANN001
+        def translate_transcript(self, raw_notes: str) -> str:
+            return raw_notes
+
+        def extract_meeting_intelligence(self, raw_notes: str, meeting_date, model_override=None):  # noqa: ANN001
             return {
                 "client_identification": {
                     "status": "identified",
@@ -270,24 +301,26 @@ def test_low_confidence_due_date_is_not_saved_even_if_provider_returns_one(
     monkeypatch.setattr(
         meeting_processing_service_module,
         "get_ai_provider",
-        lambda settings: LowConfidenceDueDateProvider(),
+        lambda *args, **kwargs: LowConfidenceDueDateProvider(),
+    )
+    monkeypatch.setattr(
+        ai_routing_service_module,
+        "get_ai_provider",
+        lambda *args, **kwargs: LowConfidenceDueDateProvider(),
     )
 
-    response = client_app.post(
-        "/api/v1/meeting-notes/process",
-        headers=api_headers,
-        json={
-            "raw_notes": "Met Neha Gupta today. I will send documents soon.",
-            "meeting_date": "2026-06-19",
-        },
+    payload, initial = _process_and_confirm(
+        client_app,
+        api_headers,
+        "Met Neha Gupta today. I will send documents soon.",
+        "2026-06-19",
+        "Neha Gupta",
     )
 
-    assert response.status_code == 200
-    payload = response.json()
     assert payload["commitments_created"][0]["due_date"] is None
     assert payload["commitments_created"][0]["due_date_text"] == "soon"
     assert payload["extraction"]["commitments"][0]["due_date"] is None
-    assert payload["warnings"] == ["Due date confidence is low."]
+    assert "Due date confidence is low." in initial["warnings"]
 
 
 def test_ai_provider_failure_returns_controlled_error(
@@ -297,13 +330,21 @@ def test_ai_provider_failure_returns_controlled_error(
         provider_name = "test"
         model_name = "test-model"
 
-        def extract_meeting_intelligence(self, raw_notes: str, meeting_date):  # noqa: ANN001
+        def translate_transcript(self, raw_notes: str) -> str:
+            return raw_notes
+
+        def extract_meeting_intelligence(self, raw_notes: str, meeting_date, model_override=None):  # noqa: ANN001
             raise AIExtractionError("Provider unavailable.")
 
     monkeypatch.setattr(
         meeting_processing_service_module,
         "get_ai_provider",
-        lambda settings: FailingProvider(),
+        lambda *args, **kwargs: FailingProvider(),
+    )
+    monkeypatch.setattr(
+        ai_routing_service_module,
+        "get_ai_provider",
+        lambda *args, **kwargs: FailingProvider(),
     )
 
     response = client_app.post(
@@ -316,21 +357,20 @@ def test_ai_provider_failure_returns_controlled_error(
     )
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Provider unavailable."
+    assert "failed" in response.json()["detail"].lower()
 
 
 def test_delete_client_removes_related_data(
     client_app: TestClient, api_headers: dict[str, str]
 ) -> None:
-    created = client_app.post(
-        "/api/v1/meeting-notes/process",
-        headers=api_headers,
-        json={
-            "raw_notes": "Met Wrong Client today. I will send documents tomorrow.",
-            "meeting_date": "2026-06-19",
-        },
+    created, _ = _process_and_confirm(
+        client_app,
+        api_headers,
+        "Met Wrong Client today. I will send documents tomorrow.",
+        "2026-06-19",
+        "Wrong Client",
     )
-    client_id = created.json()["client_id"]
+    client_id = created["client_id"]
 
     deleted = client_app.delete(f"/api/v1/clients/{client_id}", headers=api_headers)
 

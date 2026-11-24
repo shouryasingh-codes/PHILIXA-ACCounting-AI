@@ -6,7 +6,9 @@ const legacyStorage={getItem:k=>legacySaved.get(k)||null,setItem:(k,v)=>legacySa
 class Node {
   get isConnected(){return !!this.parent;}
   get lastElementChild(){return this.children.at(-1)||null;}
-  constructor(){this.children=[];this.listeners={};this.style={};this.value='';this.scrollHeight=100;this.textContent='';this.className='';this.hidden=false;this.classes=new Set();this.classList={contains:x=>this.classes.has(x),remove:x=>this.classes.delete(x),toggle:x=>{if(this.classes.has(x))this.classes.delete(x);else this.classes.add(x);}};}
+  get textContent(){return this.children.length?this.children.map(c=>c.textContent||'').join(''):this._text;}
+  set textContent(v){this.children=[];this._text=v==null?'':String(v);}
+  constructor(){this.children=[];this.listeners={};this.style={};this.value='';this.scrollHeight=100;this._text='';this.className='';this.hidden=false;this.classes=new Set();this.classList={contains:x=>this.classes.has(x)||this.className.split(/\s+/).includes(x),add:x=>this.classes.add(x),remove:x=>this.classes.delete(x),toggle:x=>{if(this.classes.has(x))this.classes.delete(x);else this.classes.add(x);}};}
   append(...nodes){for(const n of nodes){n.parent=this;this.children.push(n);}}
   replaceChildren(...nodes){this.children=[];this.append(...nodes);}
   remove(){this.parent.children=this.parent.children.filter(n=>n!==this);}
@@ -27,7 +29,7 @@ function page(sessionStorage=legacyStorage){
   const timers=[];
   const nodes=new Map(),events={};const get=id=>{if(!nodes.has(id))nodes.set(id,new Node());return nodes.get(id);};
   get('authModal').classes.add('hidden');
-  const document={getElementById:get,querySelectorAll:()=>[],addEventListener(){},createElement:tag=>{const n=new Node();n.tag=tag;return n;}};
+  const document={getElementById:get,querySelectorAll:()=>[],addEventListener(){},createElement:tag=>{const n=new Node();n.tag=tag;return n;},createTextNode:text=>{const n=new Node();n.nodeType=3;n._text=text==null?'':String(text);return n;}};
   const window={crypto:require('node:crypto').webcrypto,localStorage:storage,sessionStorage,getBusinessChatScope:()=>scope,addEventListener:(k,fn)=>events[k]=fn,
     createBusinessVoice:()=>({cancel(){},toggle(){}}),
     fetchWithAuth:async(url,options={})=>{

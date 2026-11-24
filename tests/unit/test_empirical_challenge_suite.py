@@ -256,14 +256,15 @@ class TestCORSOriginParsingAndMiddleware:
         test_app = FastAPI()
 
         if isinstance(raw_origins, list):
-            origins = [o.strip() for o in raw_origins if o.strip()]
+            origins = [o.strip() for o in raw_origins if isinstance(o, str) and o.strip()]
         elif isinstance(raw_origins, str) and raw_origins.strip():
             origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
         else:
-            origins = ["http://localhost:8000", "http://localhost:3000", "http://127.0.0.1:8000"]
+            origins = []
 
-        if "*" in origins:
-            origins = [o for o in origins if o != "*"]
+        origins = [o for o in origins if o != "*"]
+        if not origins:
+            origins = ["http://localhost:8000", "http://localhost:3000", "http://127.0.0.1:8000"]
 
         if origins:
             test_app.add_middleware(
@@ -306,7 +307,10 @@ class TestCORSOriginParsingAndMiddleware:
         assert resp.headers.get("access-control-allow-origin") == "http://app.example.com"
         assert resp.headers.get("access-control-allow-credentials") == "true"
         assert resp.headers.get("access-control-max-age") == "600"
-        assert "X-CSRF-Token" in resp.headers.get("access-control-expose-headers", "")
+
+        get_resp = client.get("/ping", headers={"Origin": "http://app.example.com"})
+        assert get_resp.status_code == 200
+        assert "X-CSRF-Token" in get_resp.headers.get("access-control-expose-headers", "")
 
         # Test another allowed origin
         resp2 = client.options(
@@ -370,23 +374,27 @@ class TestCORSOriginParsingAndMiddleware:
             assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
     def test_live_app_cors_behavior(self):
-        from app.main import app
+        from app.main import app, origins
         client = TestClient(app)
+        allowed_origin = origins[0]
 
         # Preflight against /health
         resp = client.options(
             "/health",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": allowed_origin,
                 "Access-Control-Request-Method": "GET",
                 "Access-Control-Request-Headers": "Authorization,Content-Type,X-CSRF-Token",
             },
         )
         assert resp.status_code == 200
-        assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+        assert resp.headers.get("access-control-allow-origin") == allowed_origin
         assert resp.headers.get("access-control-allow-credentials") == "true"
         assert resp.headers.get("access-control-max-age") == "600"
-        assert "X-CSRF-Token" in resp.headers.get("access-control-expose-headers", "")
+
+        get_resp = client.get("/health", headers={"Origin": allowed_origin})
+        assert get_resp.status_code == 200
+        assert "X-CSRF-Token" in get_resp.headers.get("access-control-expose-headers", "")
 
 
 # ==============================================================================

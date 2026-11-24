@@ -106,14 +106,15 @@ async def enforce_payload_size_limit(request: Request, call_next):
 # 1. Strict CORS Middleware
 raw_origins = settings.allowed_origins
 if isinstance(raw_origins, list):
-    origins = [o.strip() for o in raw_origins if o.strip()]
+    origins = [o.strip() for o in raw_origins if isinstance(o, str) and o.strip()]
 elif isinstance(raw_origins, str) and raw_origins.strip():
     origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
 else:
-    origins = ["http://localhost:8000", "http://localhost:3000", "http://127.0.0.1:8000"]
+    origins = []
 
-if "*" in origins:
-    origins = [o for o in origins if o != "*"]
+origins = [o for o in origins if o != "*"]
+if not origins:
+    origins = ["http://localhost:8000", "http://localhost:3000", "http://127.0.0.1:8000"]
 
 if origins:
     app.add_middleware(

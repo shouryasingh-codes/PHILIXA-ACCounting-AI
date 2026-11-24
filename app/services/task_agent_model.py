@@ -25,7 +25,8 @@ class AgentProviderUnavailable(Exception):
         self.code={401:'provider_authentication',403:'provider_access_denied',
             429:'provider_rate_limit',503:'provider_unavailable'}.get(status,'provider_request_failed')
         self.safe_message={403:'Groq access denied (403). Task saved; check provider/network access. No entry posted.',
-            429:'Groq free-tier rate limit reached. Task saved; wait before resuming.'}.get(status,
+            429:'Groq free-tier rate limit reached. Task saved; wait before resuming.',
+            503:'Groq service abhi busy hai (503). Task saved; thodi der baad Resume karein ya AI engine switch karein.'}.get(status,
             'Groq request unavailable. Task saved; no successful entry assumed.')
         self.safe_message=self.safe_message.replace('Groq','Gemini' if provider=='gemini' else 'Groq')
         super().__init__(self.code)

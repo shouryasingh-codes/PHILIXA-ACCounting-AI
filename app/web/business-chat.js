@@ -80,9 +80,13 @@
       if (res && res.ok) {
         const data = await res.json();
         if (data?.engine) updateEngineUI(data.engine);
-      } else { await loadActiveEngine(); }
+      } else {
+        if (typeof status !== 'undefined' && status) status.textContent = 'AI engine switch nahi ho saka; current server engine active hai.';
+        await loadActiveEngine();
+      }
     } catch (e) {
       console.warn('Engine switch error:', e);
+      if (typeof status !== 'undefined' && status) status.textContent = 'AI engine switch nahi ho saka; current server engine active hai.';
       await loadActiveEngine();
     } finally {
       engineGroqBtn.disabled = false;
@@ -561,6 +565,7 @@
       }
       const data = await response.json();
       if (id !== epoch) return;
+      if (data?.provider) updateEngineUI(data.provider);
       const node = inlineNode||addMessage(data.response, 'assistant', false, null, data);
       if(inlineNode){
         setMessageText(node, displayTextFor(data, data.response), 'assistant');
@@ -717,8 +722,8 @@
       const delay=data.retry_at?Math.max(0,Math.ceil((Date.parse(data.retry_at)-Date.now())/1000)):null;
       note.textContent=data.status==='waiting_context'&&delay!==null?'Saved · next attempt '+delay+' sec mein.':'Task saved hai.';tools.append(note);
     }
-    const providerBlocked=data.issues?.some(issue=>['provider_access_denied','provider_authentication','provider_request_failed'].includes(issue.code));
-    if(data.task_id&&data.can_resume&&(data.wait_reason||providerBlocked))toolButton(tools,'Resume',()=>submit('Saved task continue karo.'));
+    const providerBlocked=data.issues?.some(issue=>['provider_access_denied','provider_authentication','provider_rate_limit','provider_unavailable','provider_request_failed'].includes(issue.code));
+    if(data.task_id&&data.can_resume&&(data.wait_reason||providerBlocked))toolButton(tools,'Resume',()=>submit('Saved task continue karo.',false,{task_id:data.task_id,expected_revision:data.task_revision,task_inline:true}));
     if(data.task_id&&data.company_choices){
       data.company_choices.forEach(company=>toolButton(tools,company.name,()=>submit(company.name,false,{fields:{company_id:company.id}})));
     }
@@ -839,6 +844,7 @@
     if(!scope||!scope.user_id||!scope.organization_id||!scope.session_id)return;
     const signature=JSON.stringify(scope);if(signature===activeScope){await restorePromise;return;}
     restorePromise=(async()=>{
+      loadActiveEngine();
       reset();activeScope=signature;store.scope(scope);conversationId=null;conversationRevision=0;loadingChat=true;
       const cached=store.read(), selected=store.conversation();
       transcript=cached;

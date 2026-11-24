@@ -400,19 +400,23 @@ async def route(db,principal,request):
             if isinstance(exc,EngineRequestError):
                 reason=exc.code
                 row.telemetry={**row.telemetry,'provider_http_status':exc.status,'provider_timing':exc.diagnostic}
+                provider_label='Gemini' if row.telemetry.get('provider')=='gemini' else 'Groq' if row.telemetry.get('provider')=='groq' else 'AI'
                 message='Selected AI provider abhi available nahi hai. Koi naya accounting kaam start nahi hua; dobara try karein.'
                 if exc.status in (502,503,504):
                     reason='provider_temporarily_unavailable'
-                    message=f'Gemini service abhi temporary available nahi hai ({exc.status}). Thodi der baad Retry karein; koi accounting action nahi hua.'
+                    message=f'{provider_label} service abhi temporary available nahi hai ({exc.status}). Thodi der baad Retry karein; koi accounting action nahi hua.'
                 elif exc.status==429:
                     reason='provider_rate_limited'
-                    message='Gemini ne request limit ki wajah se roki (429). Baad mein Retry karein; koi accounting action nahi hua.'
+                    message=f'{provider_label} ne request limit ki wajah se roki (429). Baad mein Retry karein; koi accounting action nahi hua.'
         row.status='failed';row.result={**clarification(message,reason),'can_retry_routing':True}
         row.telemetry={**row.telemetry,'failure_type':type(exc).__name__}
     row.updated_at=tasks.now()
     row.telemetry={**row.telemetry,'total_ms':round((time.monotonic()-started)*1000)}
     await db.commit()
-    return {**row.result,'route_id':row.id,'router_version':VERSION,'routing_mode':'full' if enabled() else 'conversation_guard'}
+    provider=row.telemetry.get('provider')
+    payload={**row.result,'route_id':row.id,'router_version':VERSION,'routing_mode':'full' if enabled() else 'conversation_guard'}
+    if provider:payload['provider']=provider
+    return payload
 
 
 async def replay(db,principal,row):

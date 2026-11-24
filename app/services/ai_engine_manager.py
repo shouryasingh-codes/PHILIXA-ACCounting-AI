@@ -146,26 +146,40 @@ def gemini_wire_schema(schema):
     return visit(schema)
 
 async def call_gemini_json(system_prompt,user_content,schema=None,timeout_seconds=8):
-    """One attempt within a total deadline. Caller owns any durable retry."""
+    """Bounded call within a total deadline with one transient 502/503/504 fallback retry."""
     settings=get_settings();key=settings.gemini_api_key
     if not key:raise EngineRequestError('provider_authentication_missing')
     model=os.getenv('PHILIXA_GEMINI_MODEL','gemini-3.5-flash-lite').removeprefix('models/').strip()
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,100}',model):raise EngineRequestError('provider_model_invalid')
+    fallback_raw=os.getenv('PHILIXA_GEMINI_FALLBACK_MODEL','gemini-2.5-flash').removeprefix('models/').strip()
+    if fallback_raw and not re.fullmatch(r'[A-Za-z0-9._-]{1,100}',fallback_raw):raise EngineRequestError('provider_model_invalid')
     config={'temperature':0,'maxOutputTokens':2048,'responseMimeType':'application/json'}
     if schema is not None:config['responseJsonSchema']=gemini_wire_schema(schema)
     payload={'systemInstruction':{'parts':[{'text':system_prompt}]},'contents':[{'role':'user','parts':[{'text':user_content}]}],'generationConfig':config}
     timing=TransportTiming(model)
+    attempts=1
     try:
         async with asyncio.timeout(timeout_seconds):
+            deadline=asyncio.get_running_loop().time()+timeout_seconds
             async with gemini_client() as client:
-                timing.values['phase']='connection_pool'
-                response=await client.post(f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-                    headers={'x-goog-api-key':key},json=payload,
-                    timeout=httpx.Timeout(timeout_seconds,connect=min(3,timeout_seconds),write=min(3,timeout_seconds),pool=min(1,timeout_seconds)),
-                    extensions={'trace':timing.trace})
-                timing.values.update(http_status=response.status_code,phase='decode')
-                if response.status_code!=200:raise EngineRequestError('provider_http_error',response.status_code)
-                data=response.json()
+                models_to_try=[model,fallback_raw or model]
+                for attempt_idx,active_model in enumerate(models_to_try,start=1):
+                    attempts=attempt_idx
+                    timing=TransportTiming(active_model)
+                    timing.values['phase']='connection_pool'
+                    remaining=max(0.1,deadline-asyncio.get_running_loop().time())
+                    response=await client.post(f'https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent',
+                        headers={'x-goog-api-key':key},json=payload,
+                        timeout=httpx.Timeout(remaining,connect=min(3,remaining),write=min(3,remaining),pool=min(1,remaining)),
+                        extensions={'trace':timing.trace})
+                    timing.values.update(http_status=response.status_code,phase='decode')
+                    if response.status_code in (502,503,504) and attempt_idx<len(models_to_try) and (deadline-asyncio.get_running_loop().time())>1.5:
+                        await asyncio.sleep(0.4)
+                        continue
+                    if response.status_code!=200:raise EngineRequestError('provider_http_error',response.status_code)
+                    data=response.json()
+                    model=active_model
+                    break
     except (httpx.TimeoutException,TimeoutError):raise EngineTimeout(timing.snapshot()) from None
     except httpx.RequestError:raise EngineRequestError('provider_transport_unavailable',diagnostic=timing.snapshot()) from None
     except EngineRequestError as exc:
@@ -181,4 +195,4 @@ async def call_gemini_json(system_prompt,user_content,schema=None,timeout_second
     return output,{'provider':'gemini','model':model,'prompt_tokens':usage.get('promptTokenCount',0),
         'completion_tokens':usage.get('candidatesTokenCount',0),'thinking_tokens':usage.get('thoughtsTokenCount',0),
         'cached_tokens':usage.get('cachedContentTokenCount',0),'total_tokens':usage.get('totalTokenCount',0),
-        'latency_ms':timing.snapshot()['elapsed_ms'],'transport':timing.snapshot(),'attempts':1}
+        'latency_ms':timing.snapshot()['elapsed_ms'],'transport':timing.snapshot(),'attempts':attempts}

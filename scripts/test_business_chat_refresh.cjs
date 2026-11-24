@@ -224,5 +224,13 @@ async function flush(){for(let i=0;i<150;i++)await Promise.resolve();}
   setServerMessages([{role:'assistant',text:'Worker unavailable',data:{...agentResult,status:'queued',progress_active:false}}]);
   const offlinePage=page(emptyTabStorage);await flush();
   assert.equal(offlinePage.get('businessMessages').children[0].querySelector('.business-thinking'),null,'no fake thinking animation when worker is unavailable');
+  routerEnabled=true;agentEnabled=true;
+  setServerMessages([{role:'assistant',text:'Gemini request unavailable. Task saved; no successful entry assumed.',data:{...agentResult,task_id:'d'.repeat(32),task_revision:3,can_resume:true,status:'needs_input',issues:[{code:'provider_request_failed'}]}}]);
+  const resumePage=page(emptyTabStorage);await flush();
+  const resumeBtn=resumePage.get('businessMessages').children[0].querySelectorAll('button').find(btn=>btn.textContent==='Resume');
+  assert(resumeBtn,'provider-blocked resumable card renders Resume button');
+  await resumeBtn.listeners.click();await flush();
+  assert.equal(agentRequests.at(-1).task_id,'d'.repeat(32),'Resume targets its saved task id directly even with router enabled');
+  assert.equal(agentRequests.at(-1).expected_revision,3,'Resume sends expected_revision directly');
   console.log('PASS: chat restore/scope safety plus task creation/resume identity and status-only task polling');
 })().catch(e=>{console.error(e);process.exitCode=1;});

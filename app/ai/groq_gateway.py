@@ -63,7 +63,12 @@ def estimate(payload):
         return size+256+int(payload.get('max_completion_tokens',payload.get('max_tokens',2048)))
     raw=json.dumps({k:payload[k] for k in ('messages','tools','response_format') if k in payload},ensure_ascii=False,separators=(',',':'))
     count=len(encoding.encode(raw,disallowed_special=()))
-    return math.ceil(count*1.1)+256+int(payload.get('max_completion_tokens',payload.get('max_tokens',2048)))
+    completion_cap=int(payload.get('max_completion_tokens',payload.get('max_tokens',2048)))
+    if (payload.get('response_format') or {}).get('type')=='json_schema' and payload.get('reasoning_effort')=='low':
+        completion_est=min(completion_cap,512);overhead=128
+    else:
+        completion_est=completion_cap;overhead=256
+    return math.ceil(count*1.1)+overhead+completion_est
 
 def bucket_for(key,model):
     # Scope may be configured identically for different keys in one provider org.
@@ -100,8 +105,15 @@ def admit(bucket,tokens):
         minute=[r for r in rows if r.created_at>stamp-timedelta(seconds=60)]
         if len(rows)>=lim['rpd'] or sum(r.charged_tokens for r in rows)+tokens>lim['tpd']:
             raise QuotaDeferred('daily_quota',min(r.created_at for r in rows)+timedelta(days=1) if rows else None)
-        if len(minute)>=max(1,int(lim['rpm']*.9)) or (not observed_tokens and sum(r.charged_tokens for r in minute)+tokens>int(lim['tpm']*.9)):
+        if len(minute)>=max(1,int(lim['rpm']*.9)):
             raise QuotaDeferred('minute_quota',min(r.created_at for r in minute)+timedelta(seconds=61))
+        if not observed_tokens and state.get('tokens_reset') and state.get('tokens_reset_observed_at') and datetime.fromisoformat(state['tokens_reset'])<=stamp:
+            refilled_at=datetime.fromisoformat(state['tokens_reset_observed_at'])
+            token_minute=[r for r in minute if r.status=='reserved' or r.created_at>refilled_at]
+        else:
+            token_minute=minute
+        if not observed_tokens and sum(r.charged_tokens for r in token_minute)+tokens>int(lim['tpm']*.9):
+            raise QuotaDeferred('minute_quota',min(r.created_at for r in token_minute)+timedelta(seconds=61))
         ident=secrets.token_hex(16);ctx=call_context.get()
         db.add(Request(id=ident,bucket=bucket,task_id=ctx.get('task_id'),revision=ctx.get('revision'),status='reserved',
             reserved_tokens=tokens,charged_tokens=tokens,metadata_json={},created_at=stamp,updated_at=stamp))
@@ -149,16 +161,25 @@ def settle(ident,bucket,usage,headers,status,latency,reason=None,retry_at=None):
                 if value>0:observed[k]=min(observed.get(k,value),value)
             except ValueError:pass
         state['limits']=observed
+        settled_at=now()
         for metric in ('tokens','requests'):
             delay=duration(headers.get('x-ratelimit-reset-'+metric))
             try:remaining=int(headers.get('x-ratelimit-remaining-'+metric,''))
             except ValueError:continue
             if remaining>=0 and delay is not None:
                 inflight=list(db.scalars(select(Request).where(Request.bucket==bucket,Request.id!=ident,
-                    Request.status=='reserved',Request.created_at>now()-timedelta(seconds=60))))
+                    Request.status=='reserved',Request.created_at>settled_at-timedelta(seconds=60))))
                 deduction=sum(r.charged_tokens if metric=='tokens' else 1 for r in inflight)
                 state['remaining_'+metric]=max(0,remaining-deduction)
-                state[metric+'_reset']=(now()+timedelta(seconds=delay)).isoformat()
+                if metric=='tokens':
+                    if delay>0:
+                        state['tokens_reset']=(settled_at+timedelta(seconds=delay+0.5)).isoformat()
+                        state['tokens_reset_observed_at']=settled_at.isoformat()
+                    else:
+                        state['tokens_reset']=settled_at.isoformat()
+                        state.pop('tokens_reset_observed_at',None)
+                else:
+                    state[metric+'_reset']=(settled_at+timedelta(seconds=delay)).isoformat()
         if reason and retry_at:
             until=datetime.fromisoformat(state['until']) if state.get('until') else now()
             if retry_at>until:state.update(until=retry_at.isoformat(),reason=reason)
@@ -191,7 +212,10 @@ def request(url,payload,headers,timeout_seconds):
             reason='daily_quota' if daily else 'minute_quota' if exc.code==429 else 'provider_unavailable'
             delay=duration(h.get('retry-after'))
             if delay is None:delay=duration(h.get('x-ratelimit-reset-requests' if daily else 'x-ratelimit-reset-tokens'))
-            retry=now()+timedelta(seconds=delay if delay is not None else 86400 if daily else 65)
+            if delay is None and not daily:
+                match=re.search(r'try again in\s+([0-9a-zA-Z.]+)',body,re.I)
+                if match:delay=duration(match.group(1).rstrip('.'))
+            retry=now()+timedelta(seconds=(delay+0.5) if delay is not None else 86400 if daily else (15 if exc.code!=429 else 65))
             settle(ident,bucket,{},h,exc.code,time.monotonic()-started,reason,retry)
             raise QuotaDeferred(reason,retry,sent=True,status=exc.code) from None
         settle(ident,bucket,{},h,exc.code,time.monotonic()-started)

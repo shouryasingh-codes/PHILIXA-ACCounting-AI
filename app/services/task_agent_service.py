@@ -1,4 +1,5 @@
 """Authenticated durable task lifecycle. Feature remains opt-in during acceptance."""
+import asyncio
 import copy
 import hashlib
 import json
@@ -308,6 +309,7 @@ async def create(db, principal, request, *, routing_seed=None, provider=None):
         raise HTTPException(409, 'Request ID reused with changed task.')
     await db.commit()
     await enqueue(row.id)
+    await db.refresh(row)
     return view(row)
 
 
@@ -350,6 +352,7 @@ async def resume(db, principal, ident, request, *, routing_seed=None):
         selected=await apply(db,principal,row,request)
         if selected:
             await enqueue(row.id)
+            await db.refresh(row)
             return view(row)
     if request.retry_documents and (not row.state.get('attachment_document_ids') or request.message or request.selection or request.company_id or request.context_refresh):
         raise HTTPException(422,'Retry needs an exact attachment task without other changes.')
@@ -383,6 +386,7 @@ async def resume(db, principal, ident, request, *, routing_seed=None):
     row.updated_at = now()
     await db.commit()
     await enqueue(row.id)
+    await db.refresh(row)
     return view(row)
 
 
@@ -390,21 +394,45 @@ def wake_job_id(ident,revision):
     return f'agent-task:{ident}:{revision}'
 
 
+def inline_enabled():
+    flag=os.getenv('PHILIXA_TASK_AGENT_INLINE_FAST_PATH')
+    if flag is not None:
+        return flag=='1'
+    return not bool(os.getenv('PYTEST_CURRENT_TEST'))
+
+
 async def enqueue(ident):
-    # Redis is only a wake-up mechanism. The committed queued task is recovered
-    # by the worker cron if Redis is temporarily unavailable.
+    # Inline fast-path runs interactive turns directly so users do not wait in queue;
+    # Redis/ARQ remains the fallback/recovery path for heavy or deferred work.
     from arq.connections import create_pool, RedisSettings
     from app.core.config import get_settings
     from app.services.bill_document_service import QUEUE
+    from app.database.session import AsyncSessionLocal
     pool = None
     try:
-        pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
-        from app.database.session import AsyncSessionLocal
+        try:
+            pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+        except Exception:
+            pool = None
         async with AsyncSessionLocal() as db:
             task=await db.get(AgentTask,ident)
             if not task:return
             revision=task.revision
-        await pool.enqueue_job('execute_agent_task',ident,revision,_queue_name=QUEUE,_job_id=wake_job_id(ident,revision))
+            state=task.state or {}
+            should_inline=inline_enabled() and task.status=='queued' and not state.get('attachment_initial')
+        if should_inline:
+            from app.jobs.task_agent_jobs import execute_agent_task
+            try:
+                await asyncio.wait_for(execute_agent_task({'redis':pool},ident,revision),timeout=14)
+            except (asyncio.TimeoutError,TimeoutError,Exception):
+                pass
+            async with AsyncSessionLocal() as db:
+                task=await db.get(AgentTask,ident)
+                if not task or task.status!='queued':
+                    return
+                revision=task.revision
+        if pool:
+            await pool.enqueue_job('execute_agent_task',ident,revision,_queue_name=QUEUE,_job_id=wake_job_id(ident,revision))
     except Exception:
         pass
     finally:

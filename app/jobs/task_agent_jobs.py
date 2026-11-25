@@ -60,8 +60,11 @@ def quota_wait(state,exc,stamp):
     if exc.sent and result.get('provider_retries',0)>=1:eligible=False
     if eligible:
         if exc.sent:result['provider_retries']=result.get('provider_retries',0)+1
+        wait_summary=('Groq rate limit ki wajah se thoda wait hai. Details saved hain — apne aap continue hoga (ya upar Gemini switch karke fast try karein).'
+            if exc.reason=='minute_quota'
+            else 'AI service abhi busy hai. Details saved hain — thodi der mein apne aap continue hoga.')
         result.update(status='waiting_context',provider_retry_at=exc.retry_at.isoformat(),
-            summary='Details saved hain. Thodi der mein automatically continue hoga.')
+            summary=wait_summary)
     else:
         result.pop('provider_retry_at',None)
         result.update(status='needs_input',summary='Task saved hai—Resume karein.' if exc.reason!='request_too_large' else 'Task saved hai. Context bahut bada hai; narrower details se resume karein.')
@@ -105,7 +108,7 @@ async def execute_agent_task(ctx, task_id, expected_revision=None):
         revision = row.revision
         state = copy.deepcopy(row.state)
         from app.services.ai_engine_manager import get_active_engine
-        if not state.get('provider'):
+        if not state.get('provider') or state.get('wait_reason') in ('minute_quota', 'daily_quota', 'provider_unavailable', 'local_cap'):
             state['provider']=await get_active_engine()
         state['task_id']=row.id
         state['company_id']=row.company_id
@@ -306,14 +309,14 @@ async def execute_agent_task(ctx, task_id, expected_revision=None):
                 if isinstance(exc,AgentProviderUnavailable) and not pending:
                     row.state={**row.state,'summary':exc.safe_message,'issues':[{'code':exc.code,'http_status':exc.status,'diagnostic':exc.diagnostic}]}
                     if exc.status in (429,503) and row.state.get('provider_retries',0)<1:
-                        fallback=QuotaDeferred('minute_quota' if exc.status==429 else 'provider_unavailable',now()+timedelta(seconds=65),sent=True,status=exc.status)
+                        fallback=QuotaDeferred('minute_quota' if exc.status==429 else 'provider_unavailable',now()+timedelta(seconds=65 if exc.status==429 else 15),sent=True,status=exc.status)
                         row.state=quota_wait(row.state,fallback,now());row.status=row.state['status']
                 await db.commit()
                 if row.status=='waiting_context' and row.state.get('provider_retry_at') and ctx.get('redis'):
                     from app.services.bill_document_service import QUEUE
                     await ctx['redis'].enqueue_job('execute_agent_task',task_id,revision,_queue_name=QUEUE,
                         _defer_until=datetime.fromisoformat(row.state['provider_retry_at']),
-                        _job_id=f'agent-provider-retry:{task_id}:{revision}')
+                        _job_id=f'agent-provider-retry:{task_id}:{revision}:{row.state["provider_retry_at"]}')
         finally:
             row = await db.get(AgentTask,task_id,populate_existing=True)
             if row and row.lease_token == token:

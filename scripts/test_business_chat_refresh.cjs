@@ -232,5 +232,12 @@ async function flush(){for(let i=0;i<150;i++)await Promise.resolve();}
   await resumeBtn.listeners.click();await flush();
   assert.equal(agentRequests.at(-1).task_id,'d'.repeat(32),'Resume targets its saved task id directly even with router enabled');
   assert.equal(agentRequests.at(-1).expected_revision,3,'Resume sends expected_revision directly');
+  setServerMessages([{role:'assistant',text:'Stock missing',data:{...agentResult,task_id:'e'.repeat(32),task_revision:2,can_resume:true,status:'needs_input',issues:[{kind:'identity',field:'0:item_name'}]}}]);
+  const masterPage=page(emptyTabStorage);await flush();
+  const masterBtn=masterPage.get('businessMessages').children[0].querySelectorAll('button').find(btn=>btn.textContent==='+ Tally mein master banayein');
+  assert(masterBtn,'missing master card renders 1-click create button');
+  await masterBtn.listeners.click();await flush();
+  assert.equal(agentRequests.at(-1).task_id,'e'.repeat(32),'master button targets saved task id directly');
+  assert.equal(agentRequests.at(-1).expected_revision,2,'master button sends expected_revision directly');
   console.log('PASS: chat restore/scope safety plus task creation/resume identity and status-only task polling');
 })().catch(e=>{console.error(e);process.exitCode=1;});

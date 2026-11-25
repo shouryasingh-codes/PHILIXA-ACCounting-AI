@@ -1,6 +1,7 @@
 """Schema constrained next-step proposal; no model-controlled execution."""
 import asyncio
 import json
+import os
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from app.ai.provider import GroqProvider, _post_json, AIExtractionError
@@ -85,39 +86,82 @@ def request_payload(state,schemas,*,prompt_version=None):
             dict(role='user', content=context)],
         response_format={'type':'json_schema','json_schema':{'name':'agent_decision','strict':True,'schema':schema}})
 
+async def _choose_gemini(state, schemas, prompt_version=None):
+    from app.services.ai_engine_manager import call_gemini_json, EngineRequestError
+    schema_json = json.dumps(WireDecision.model_json_schema())
+    sys_prompt = system_prompt(state, schemas, prompt_version) + '\nResponse contract: summary is internal rationale only. user_response is the concise direct question/answer for the user, in their language; never instructions to another assistant. Interpret the latest message first: general capability/help questions do not refer to attached bills merely because attachments exist.\nResponse schema (Strict JSON format):\n' + schema_json
+    context = planner_context(state, schemas)
+    try:
+        content, usage = await call_gemini_json(sys_prompt, context, schema=WireDecision.model_json_schema(), timeout_seconds=12)
+    except EngineRequestError as exc:
+        raise AgentProviderUnavailable(exc.status,exc.code,provider='gemini') from None
+    return content, {'usage': usage}
+
+
+async def _choose_groq(state, schemas, prompt_version, settings):
+    provider = GroqProvider(settings)
+    key = settings.ai_api_key or settings.groq_api_key
+    if not key:raise ValueError('Configured Groq key unavailable')
+    if settings.ai_economy_model.replace('groq/','')!='openai/gpt-oss-20b':
+        raise ValueError('Task agent baseline requires configured GPT-OSS 20B')
+    payload=request_payload(state,schemas,prompt_version=prompt_version)
+    try:
+        data = await asyncio.wait_for(asyncio.to_thread(_post_json, provider.base_url, payload,
+            {'Authorization': 'Bearer '+key}, timeout_seconds=25, max_attempts=1), timeout=30)
+    except AIExtractionError as exc:
+        known=('json_validate_failed','failed_generation','context_length_exceeded','max_completion_tokens','invalid_request_error','model_not_found')
+        diagnostic=next((marker for marker in known if marker in str(exc)),None)
+        raise AgentProviderUnavailable(getattr(exc.__cause__,'code',None),diagnostic) from None
+    message = data['choices'][0]['message']
+    if message.get('refusal'):
+        raise ValueError('Model refused task')
+    return message['content'], data
+
+
 async def choose(state, schemas, *, prompt_version=None):
-    from app.services.ai_engine_manager import get_active_engine, call_gemini_json
+    from app.ai.groq_gateway import QuotaDeferred
+    from app.services.ai_engine_manager import get_active_engine
     engine = state.get('provider') or await get_active_engine()
     settings = get_settings()
+    failover_enabled = os.getenv('PHILIXA_CROSS_PROVIDER_FAILOVER', '1') == '1'
+    failover_from = None
 
     if engine == "gemini":
-        schema_json = json.dumps(WireDecision.model_json_schema())
-        sys_prompt = system_prompt(state, schemas, prompt_version) + '\nResponse contract: summary is internal rationale only. user_response is the concise direct question/answer for the user, in their language; never instructions to another assistant. Interpret the latest message first: general capability/help questions do not refer to attached bills merely because attachments exist.\nResponse schema (Strict JSON format):\n' + schema_json
-        context = planner_context(state, schemas)
-        from app.services.ai_engine_manager import EngineRequestError
         try:
-            content, usage = await call_gemini_json(sys_prompt, context, schema=WireDecision.model_json_schema(), timeout_seconds=20)
-        except EngineRequestError as exc:
-            raise AgentProviderUnavailable(exc.status,exc.code,provider='gemini') from None
-        data = {'usage': usage}
+            content, data = await _choose_gemini(state, schemas, prompt_version)
+        except AgentProviderUnavailable as exc:
+            groq_ok = (failover_enabled and exc.status in (429, 500, 502, 503, 504)
+                and bool(getattr(settings, 'ai_api_key', '') or getattr(settings, 'groq_api_key', ''))
+                and getattr(settings, 'ai_economy_model', '').replace('groq/', '') == 'openai/gpt-oss-20b')
+            if not groq_ok:
+                raise
+            try:
+                content, data = await _choose_groq(state, schemas, prompt_version, settings)
+                failover_from = 'gemini'
+                engine = 'groq'
+            except Exception:
+                raise exc from None
     else:
-        provider = GroqProvider(settings)
-        key = settings.ai_api_key or settings.groq_api_key
-        if not key:raise ValueError('Configured Groq key unavailable')
-        if settings.ai_economy_model.replace('groq/','')!='openai/gpt-oss-20b':
-            raise ValueError('Task agent baseline requires configured GPT-OSS 20B')
-        payload=request_payload(state,schemas,prompt_version=prompt_version)
         try:
-            data = await asyncio.wait_for(asyncio.to_thread(_post_json, provider.base_url, payload,
-                {'Authorization': 'Bearer '+key}, timeout_seconds=25, max_attempts=1), timeout=30)
-        except AIExtractionError as exc:
-            known=('json_validate_failed','failed_generation','context_length_exceeded','max_completion_tokens','invalid_request_error','model_not_found')
-            diagnostic=next((marker for marker in known if marker in str(exc)),None)
-            raise AgentProviderUnavailable(getattr(exc.__cause__,'code',None),diagnostic) from None
-        message = data['choices'][0]['message']
-        if message.get('refusal'):
-            raise ValueError('Model refused task')
-        content = message['content']
+            content, data = await _choose_groq(state, schemas, prompt_version, settings)
+        except QuotaDeferred as exc:
+            can_failover = (failover_enabled
+                and exc.reason in ('minute_quota', 'daily_quota', 'provider_unavailable', 'local_cap')
+                and bool(getattr(settings, 'gemini_api_key', '')))
+            if not can_failover:
+                raise
+            content, data = await _choose_gemini(state, schemas, prompt_version)
+            failover_from = 'groq'
+            engine = 'gemini'
+        except AgentProviderUnavailable as exc:
+            can_failover = (failover_enabled
+                and exc.status in (429, 500, 502, 503, 504)
+                and bool(getattr(settings, 'gemini_api_key', '')))
+            if not can_failover:
+                raise
+            content, data = await _choose_gemini(state, schemas, prompt_version)
+            failover_from = 'groq'
+            engine = 'gemini'
 
     wire = WireDecision.model_validate_json(content)
     # No arguments are executed for a question/finish. Models may legitimately
@@ -125,4 +169,7 @@ async def choose(state, schemas, *, prompt_version=None):
     arguments=json.loads(wire.arguments_json) if wire.kind=='tool' else {}
     result = Decision.model_validate(dict(kind=wire.kind, tool=wire.tool,
         arguments=arguments, summary=wire.summary, user_response=wire.user_response))
-    return result, {**data.get('usage', {}),'provider':engine,'prompt_package':metadata(state,schemas,prompt_version)}
+    usage_meta = {**data.get('usage', {}),'provider':engine,'prompt_package':metadata(state,schemas,prompt_version)}
+    if failover_from:
+        usage_meta['failover_from'] = failover_from
+    return result, usage_meta

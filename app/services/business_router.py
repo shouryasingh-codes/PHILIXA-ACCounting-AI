@@ -323,7 +323,8 @@ async def route(db,principal,request):
                 with provider_scope(selected_provider):
                     await reserve_model(db,row)
                     decision,usage=await classify(request.text,context,row.id)
-            row.telemetry={**row.telemetry,'usage':usage}
+            actual_provider=(usage or {}).get('provider')
+            row.telemetry={**row.telemetry,'usage':usage,**({'provider':actual_provider} if actual_provider else {})}
         row.telemetry={**row.telemetry,'path':'model' if row.telemetry.get('model_attempts') else 'deterministic',
                        'classification_ms':round((time.monotonic()-started)*1000)}
         if decision.intent=='existing_read' and request.intent not in LEGACY_READS:

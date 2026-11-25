@@ -209,7 +209,14 @@ def format_tally_blockers(state: dict, data: dict) -> str | None:
     blocks = []
 
     # 1. Header with invoice, date and total:
-    if raw_supplier and supplier and raw_supplier.casefold() != supplier.casefold() and supplier != 'Supplier':
+    if not state.get('attachment_document_ids') and not inv_num:
+        if raw_supplier and supplier and raw_supplier.casefold() != supplier.casefold() and supplier != 'Supplier':
+            header_lines = [f"Maine {raw_supplier} ki purchase details check kar li hain (Tally me mapped: {supplier}):"]
+        elif supplier != 'Supplier':
+            header_lines = [f"Maine {supplier} ki purchase details check kar li hain:"]
+        else:
+            header_lines = ["Maine purchase details check kar li hain:"]
+    elif raw_supplier and supplier and raw_supplier.casefold() != supplier.casefold() and supplier != 'Supplier':
         header_lines = [f"Maine {raw_supplier} ka bill check kar liya hai (Tally me mapped: {supplier}):"]
     else:
         header_lines = [f"Maine {supplier} ka bill check kar liya hai:"]
@@ -421,7 +428,7 @@ async def run(state: dict, tools: list[Tool], choose, persist, budget, completio
             state['action_id'] = result.data['action_id']
         if result.status == 'waiting_context' and result.data.get('document_id'):
             state['waiting_document_id'] = result.data['document_id']
-        if tool.name == 'purchase_context':
+        if tool.name in ('purchase_context', 'create_purchase_draft', 'apply_user_message'):
             blocker_text = format_tally_blockers(state, result.data)
             if blocker_text:
                 result.data['response'] = blocker_text

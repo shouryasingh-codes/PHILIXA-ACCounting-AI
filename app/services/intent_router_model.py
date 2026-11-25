@@ -1,6 +1,7 @@
 """One bounded semantic routing request through the shared Groq ledger."""
 import asyncio
 import json
+import os
 from typing import Literal, get_args
 from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -203,37 +204,77 @@ def payload(message,context):
         response_format={'type':'json_schema','json_schema':{'name':'intent_route','strict':True,'schema':schema}})
 
 
+async def _classify_gemini(message, context, *, timeout_seconds=12):
+    from app.services.ai_engine_manager import call_gemini_json
+    user_json = json.dumps({'product_capabilities':conversation_capabilities(),'context':context,'current_message':message},ensure_ascii=False)
+    content, usage = await call_gemini_json(SYSTEM, user_json, schema=routing_schema(), timeout_seconds=timeout_seconds)
+    return content, {'usage': usage}
+
+
+async def _classify_groq(message, context, route_id, settings):
+    provider=GroqProvider(settings)
+    key=settings.ai_api_key or settings.groq_api_key
+    if not key or not groq_gateway.enabled() or urlparse(provider.base_url).hostname!='api.groq.com':
+        raise RoutingNotSent('Configured shared Groq routing unavailable')
+    if settings.ai_economy_model.replace('groq/','')!='openai/gpt-oss-20b':
+        raise RoutingNotSent('Unexpected routing model')
+    body=payload(message,context)
+    if len(json.dumps(body))>40000:raise RoutingNotSent('Routing context too large; narrow task')
+    try:
+        with groq_gateway.context(task_id=route_id,route_version=VERSION):
+            data=await asyncio.wait_for(asyncio.to_thread(_post_json,provider.base_url,body,
+                {'Authorization':'Bearer '+key},timeout_seconds=7,max_attempts=1),timeout=8)
+    except AIExtractionError as exc:
+        if getattr(exc.__cause__,'code',None)==400 and 'json_validate_failed' in str(exc):
+            raise RoutingOutputError([{'field':'provider_output','type':'json_validate_failed'}]) from None
+        raise
+    wire=data['choices'][0]
+    if wire.get('finish_reason')!='stop' or wire['message'].get('refusal'):
+        raise ValueError('Incomplete routing output')
+    return wire['message']['content'], data
+
+
 async def classify(message,context,route_id):
     if not ready():raise RoutingNotSent('Routing tokenizer/ledger is initializing')
-    from app.services.ai_engine_manager import get_active_engine, call_gemini_json
+    from app.services.ai_engine_manager import get_active_engine, EngineRequestError
     engine = await get_active_engine()
     settings=get_settings()
+    failover_enabled = os.getenv('PHILIXA_CROSS_PROVIDER_FAILOVER', '1') == '1'
 
     if engine == "gemini":
-        user_json = json.dumps({'product_capabilities':conversation_capabilities(),'context':context,'current_message':message},ensure_ascii=False)
-        content, usage = await call_gemini_json(SYSTEM, user_json, schema=routing_schema(), timeout_seconds=15)
-        data = {'usage': usage}
-    else:
-        provider=GroqProvider(settings)
-        key=settings.ai_api_key or settings.groq_api_key
-        if not key or not groq_gateway.enabled() or urlparse(provider.base_url).hostname!='api.groq.com':
-            raise RoutingNotSent('Configured shared Groq routing unavailable')
-        if settings.ai_economy_model.replace('groq/','')!='openai/gpt-oss-20b':
-            raise RoutingNotSent('Unexpected routing model')
-        body=payload(message,context)
-        if len(json.dumps(body))>40000:raise RoutingNotSent('Routing context too large; narrow task')
         try:
-            with groq_gateway.context(task_id=route_id,route_version=VERSION):
-                data=await asyncio.wait_for(asyncio.to_thread(_post_json,provider.base_url,body,
-                    {'Authorization':'Bearer '+key},timeout_seconds=7,max_attempts=1),timeout=8)
+            content, data = await _classify_gemini(message, context, timeout_seconds=15)
+        except EngineRequestError as exc:
+            groq_ok = (failover_enabled and exc.status in (429, 500, 502, 503, 504)
+                and bool(getattr(settings, 'ai_api_key', '') or getattr(settings, 'groq_api_key', ''))
+                and groq_gateway.enabled())
+            if not groq_ok:
+                raise
+            try:
+                content, data = await _classify_groq(message, context, route_id, settings)
+                data = {**data, 'usage': {**data.get('usage', {}), 'provider': 'groq', 'failover_from': 'gemini'}}
+            except Exception:
+                raise exc from None
+    else:
+        try:
+            content, data = await _classify_groq(message, context, route_id, settings)
+        except groq_gateway.QuotaDeferred as exc:
+            can_failover = (failover_enabled
+                and exc.reason in ('minute_quota', 'daily_quota', 'provider_unavailable', 'local_cap')
+                and bool(getattr(settings, 'gemini_api_key', '')))
+            if not can_failover:
+                raise
+            content, data = await _classify_gemini(message, context, timeout_seconds=12)
+            data = {**data, 'usage': {**data.get('usage', {}), 'provider': 'gemini', 'failover_from': 'groq'}}
         except AIExtractionError as exc:
-            if getattr(exc.__cause__,'code',None)==400 and 'json_validate_failed' in str(exc):
-                raise RoutingOutputError([{'field':'provider_output','type':'json_validate_failed'}]) from None
-            raise
-        wire=data['choices'][0]
-        if wire.get('finish_reason')!='stop' or wire['message'].get('refusal'):
-            raise ValueError('Incomplete routing output')
-        content = wire['message']['content']
+            status = getattr(exc.__cause__, 'code', None)
+            can_failover = (failover_enabled
+                and status in (429, 500, 502, 503, 504)
+                and bool(getattr(settings, 'gemini_api_key', '')))
+            if not can_failover:
+                raise
+            content, data = await _classify_gemini(message, context, timeout_seconds=12)
+            data = {**data, 'usage': {**data.get('usage', {}), 'provider': 'gemini', 'failover_from': 'groq'}}
     try:
         parsed=WireRoute.model_validate_json(content)
         if parsed.intent in ('supplier_read','purchase_history_read'):

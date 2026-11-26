@@ -180,13 +180,14 @@ class MastersPreviewRequest(BaseModel):
     create_supplier:bool=True
     create_items:bool=True
     unit_definitions:list[MasterUnit]=Field(default_factory=list,max_length=100)
+    item_units:dict[str,str]=Field(default_factory=dict)
 
 @router.post('/purchase-drafts/{draft_id}/masters-preview')
 async def preview_bill_masters(draft_id:str,request:MastersPreviewRequest,principal:CurrentPrincipal,db:AsyncSession=Depends(get_db)):
     row=await drafts.scoped_draft(db,principal,draft_id,lock=True)
     if row.revision!=request.revision:raise HTTPException(409,'Draft changed; review current details.')
     from app.services.master_creation_service import prepare
-    return await prepare(db,principal,draft_id,request.create_supplier,request.create_items,[u.model_dump() for u in request.unit_definitions])
+    return await prepare(db,principal,draft_id,request.create_supplier,request.create_items,[u.model_dump() for u in request.unit_definitions],item_units=request.item_units)
 
 @router.get('/conversations')
 async def list_chats(principal: CurrentPrincipal, db: AsyncSession = Depends(get_db)):

@@ -1,5 +1,5 @@
 """Revision-bound master previews and paired-device durable dispatch."""
-import hashlib,json,secrets,uuid
+import copy,hashlib,json,secrets,uuid
 from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -35,7 +35,7 @@ async def connector_ready(device):
     try:return bool(await redis.exists('tally:v12online:'+device.id))
     finally:await redis.aclose()
 
-async def prepare(db,principal,draft_id,create_supplier=True,create_items=True,unit_definitions=None):
+async def prepare(db,principal,draft_id,create_supplier=True,create_items=True,unit_definitions=None,item_units=None):
     row=await drafts.scoped_draft(db,principal,draft_id,lock=True)
     await drafts.editable_action(db,row,row.revision)
     company=await drafts.company_for(db,principal,row.company_id)
@@ -50,6 +50,23 @@ async def prepare(db,principal,draft_id,create_supplier=True,create_items=True,u
     snapshot=await sync.saved_snapshot(db,company)
     from app.services.purchase_native_context import fresh
     if not snapshot or not fresh(snapshot.collected_at):raise HTTPException(409,'Sync current Tally masters before preparing this review.')
+    if create_items and item_units:
+        updated_content=copy.deepcopy(row.content or {})
+        applied={}
+        for idx,line in enumerate(updated_content.get('lines') or []):
+            if str(line.get('unit') or '').strip():
+                continue
+            chosen=str(item_units.get(str(idx)) or item_units.get(str(line.get('item_name') or '')) or '').strip()
+            if chosen:
+                if len(chosen)>50:raise HTTPException(422,'Unit name maximum 50 characters ho sakta hai.')
+                line['unit']=chosen
+                applied[str(idx)]=chosen
+        if applied:
+            row.content=updated_content
+            row.revision+=1
+            row.updated_at=sync.now()
+            drafts.record_event(db,row,principal.user_id,'master_unit_selected',{'units':applied})
+            await db.flush()
     cat=deserialize_catalog(snapshot.catalog);guid=str(uuid.uuid4());masters=[]
     def add(kind,label,fields):
         if any(m['kind']==kind and m['name']==label for m in masters):return

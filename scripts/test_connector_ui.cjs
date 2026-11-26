@@ -189,6 +189,29 @@ async function flush(){for(let i=0;i<12;i++)await Promise.resolve();}
   assert.equal(masterRequests,1,'parallel clicks share one preparation');
   assert.equal(masterResult.preview.token,'master-action');assert.equal(masterState.task_id,null,'master approval cannot inherit the purchase task identity');
   assert.equal(masterState.proposal,null);
+  const unitTools=new Node();let itemPreviewClick,unitRequests=[],unitResult;
+  window.fetchWithAuth=async(url,options)=>{
+    assert.equal(url,'/api/v1/business/purchase-drafts/draft/masters-preview');
+    unitRequests.push(JSON.parse(options.body));
+    return {ok:true,json:async()=>({draft_id:'draft',response:'Master preview ready; no write',preview:{token:'item-action',can_confirm:true,lines:[],blockers:[]}})};
+  };
+  window.renderBusinessTally(unitTools,{task_id:'unit-task',draft_id:'draft',
+    proposal:{revision:4,content:{party_name:'Sharma Traders',lines:[{item_name:'laptop',quantity:5,rate:35000,unit:''}]},totals:{}},
+    purchase_assistant:{field:'0:item_name',revision:4,choices:[],available_units:['Nos','Kg']},
+    issues:[{kind:'identity',field:'0:item_name'}]},
+    {...callbacks,
+      toolButton(parent,label,fn){if(label==='1 naye items ka preview')itemPreviewClick=fn;},
+      renderResult(parent,result){unitResult=result;}});
+  await itemPreviewClick();await flush();
+  assert.equal(unitRequests.length,0,'missing-unit preview must open unit picker before calling API');
+  const picker=walk(unitTools).find(n=>n.className==='master-unit-picker');
+  assert(picker,'unit picker renders inline for blank-unit item');
+  const nosBtn=walk(picker).find(n=>n.textContent==='Nos');
+  assert(nosBtn,'synced Tally unit button appears in picker');
+  await nosBtn.click();await flush();
+  assert.equal(unitRequests.length,1);
+  assert.deepEqual(unitRequests[0].item_units,{'0':'Nos'});
+  assert.equal(unitResult.preview.token,'item-action');
   console.log('PASS: setup, scoped master preview without AI/approval, reports, grouped facts and evidence-bound acceptance');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 

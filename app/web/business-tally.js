@@ -661,16 +661,17 @@
       const hasMissingItems=missingItemIssues.length>0;
 
       const choices=document.createElement('div');choices.className='purchase-choice-list';options.append(choices);
-      let mastersPending=false;
-      const masterPreview=async(create_supplier,create_items)=>{
+      let mastersPending=false,unitPicker=null;
+      const masterPreview=async(create_supplier,create_items,item_units=null)=>{
         if(mastersPending)return;
         const draftId=data.draft_id||data.purchase_assistant.draft_id;
         const revision=data.proposal?.revision??data.purchase_assistant.revision;
         if(!draftId||!Number.isInteger(revision)){const p=document.createElement('p');p.textContent='Current draft review reload karein; revision missing hai.';choices.append(p);return;}
         const scope=JSON.stringify(window.getBusinessChatScope?.()||{});mastersPending=true;
         try{
+          const payload={revision,create_supplier,create_items,...(item_units&&Object.keys(item_units).length?{item_units}:{})};
           const response=await window.fetchWithAuth('/api/v1/business/purchase-drafts/'+encodeURIComponent(draftId)+'/masters-preview',{
-            method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision,create_supplier,create_items})});
+            method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
           const result=await response.json();
           if(scope!==JSON.stringify(window.getBusinessChatScope?.()||{})||tools.isConnected===false)return;
           if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Master preview unavailable.');
@@ -680,13 +681,65 @@
         }catch(error){if(scope===JSON.stringify(window.getBusinessChatScope?.()||{})&&tools.isConnected!==false){const p=document.createElement('p');p.textContent=error.message;choices.append(p);}}
         finally{mastersPending=false;}
       };
+      const promptUnitsOrPreview=(create_supplier,create_items)=>{
+        const lines=data.proposal?.content?.lines||[];
+        const missingUnitLines=[];
+        if(create_items){
+          for(const issue of missingItemIssues){
+            const idx=Number.parseInt(String(issue.field||'').split(':')[0],10);
+            const line=Number.isInteger(idx)?lines[idx]:null;
+            if(line&&!String(line.unit||'').trim())missingUnitLines.push({idx,name:line.item_name||`Item ${idx+1}`});
+          }
+        }
+        if(!missingUnitLines.length)return masterPreview(create_supplier,create_items);
+        unitPicker?.remove();
+        const picker=document.createElement('div');picker.className='master-unit-picker';unitPicker=picker;
+        const unitChoices=(data.purchase_assistant?.available_units?.length?data.purchase_assistant.available_units:['Nos','Pcs','Bags','Kg','Box']).slice(0,10);
+        const prompt=document.createElement('p');prompt.className='business-hint';
+        if(missingUnitLines.length===1){
+          const target=missingUnitLines[0];
+          prompt.textContent=`Item "${target.name}" ke liye Tally unit chunein (preview se pehle zaroori hai):`;
+          picker.append(prompt);
+          const unitRow=document.createElement('div');unitRow.className='purchase-choice-list';
+          unitChoices.forEach(unit=>{
+            const btn=document.createElement('button');btn.type='button';btn.className='master-unit-choice';btn.textContent=unit;
+            btn.addEventListener('click',()=>masterPreview(create_supplier,create_items,{[String(target.idx)]:unit}));
+            unitRow.append(btn);
+          });
+          picker.append(unitRow);
+          const customRow=document.createElement('div');customRow.className='purchase-choice-list';
+          const customInput=document.createElement('input');customInput.type='text';customInput.placeholder='Ya unit likhein (jaise Nos)';customInput.maxLength=50;
+          const customBtn=document.createElement('button');customBtn.type='button';customBtn.textContent='Preview dekhein';
+          customBtn.addEventListener('click',()=>{const v=customInput.value.trim();if(v)masterPreview(create_supplier,create_items,{[String(target.idx)]:v});});
+          customRow.append(customInput,customBtn);picker.append(customRow);
+        }else{
+          prompt.textContent='Naye stock items ke liye Tally units chunein (preview se pehle zaroori hai):';
+          picker.append(prompt);
+          const inputs=[];
+          missingUnitLines.forEach(target=>{
+            const label=document.createElement('label');label.textContent=`${target.name}: `;
+            const select=document.createElement('select');
+            const blank=document.createElement('option');blank.value='';blank.textContent='Unit chunein…';select.append(blank);
+            unitChoices.forEach(u=>{const opt=document.createElement('option');opt.value=u;opt.textContent=u;select.append(opt);});
+            label.append(select);picker.append(label);inputs.push({idx:target.idx,select});
+          });
+          const submitBtn=document.createElement('button');submitBtn.type='button';submitBtn.textContent='Preview dekhein';
+          submitBtn.addEventListener('click',()=>{
+            const map={};
+            for(const row of inputs){if(!row.select.value.trim())return;map[String(row.idx)]=row.select.value.trim();}
+            masterPreview(create_supplier,create_items,map);
+          });
+          picker.append(submitBtn);
+        }
+        choices.append(picker);
+      };
 
       if(hasMissingSupplier&&hasMissingItems){
-        toolButton(choices,'Supplier aur items ka preview',()=>masterPreview(true,true));
+        toolButton(choices,'Supplier aur items ka preview',()=>promptUnitsOrPreview(true,true));
         toolButton(choices,'🔗 Existing masters se map karein',()=>submit('Existing masters se map karna hai'));
       }else if(hasMissingItems){
         const itemCount=missingItemIssues.length;
-        toolButton(choices,`${itemCount} naye items ka preview`,()=>masterPreview(false,true));
+        toolButton(choices,`${itemCount} naye items ka preview`,()=>promptUnitsOrPreview(false,true));
         toolButton(choices,'🔗 Existing item se map karein',()=>submit('Existing item se map karna hai'));
         toolButton(choices,'🔄 Tally items sync karein',()=>submit('Tally items sync karo'));
       }else if(hasMissingSupplier){

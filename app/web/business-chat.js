@@ -728,7 +728,7 @@
     const providerBlocked=data.issues?.some(issue=>['provider_access_denied','provider_authentication','provider_rate_limit','provider_unavailable','provider_request_failed'].includes(issue.code));
     if(data.task_id&&data.can_resume&&(data.wait_reason||providerBlocked))toolButton(tools,'Resume',()=>submit('Saved task continue karo.',false,{task_id:data.task_id,expected_revision:data.task_revision,task_inline:true}));
     const missingMaster=data.issues?.some(issue=>issue?.kind==='identity'&&(issue.field==='party_name'||String(issue.field||'').endsWith(':item_name')));
-    if(data.task_id&&data.status==='needs_input'&&missingMaster&&!data.preview){
+    if(data.task_id&&data.status==='needs_input'&&missingMaster&&!data.preview&&!data.purchase_assistant){
       toolButton(tools,'+ Tally mein master banayein',()=>submit('Haan, Tally me missing stock/supplier master bana do.',false,{task_id:data.task_id,expected_revision:data.task_revision,task_inline:true}));
     }
     if(data.task_id&&data.company_choices){

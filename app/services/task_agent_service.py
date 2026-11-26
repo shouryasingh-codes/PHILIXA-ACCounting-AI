@@ -423,12 +423,12 @@ async def enqueue(ident):
         if should_inline:
             from app.jobs.task_agent_jobs import execute_agent_task
             try:
-                await asyncio.wait_for(execute_agent_task({'redis':pool},ident,revision),timeout=14)
+                await asyncio.wait_for(execute_agent_task({'redis':pool},ident,revision),timeout=20)
             except (asyncio.TimeoutError,TimeoutError,Exception):
                 pass
             async with AsyncSessionLocal() as db:
                 task=await db.get(AgentTask,ident)
-                if not task or task.status!='queued':
+                if not task or task.status not in ('queued','running'):
                     return
                 revision=task.revision
         if pool:

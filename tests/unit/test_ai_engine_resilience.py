@@ -5,8 +5,10 @@ import urllib.error
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from xml.etree import ElementTree as ET
 
 import arq.connections
+from fastapi import HTTPException
 import pytest
 from pydantic import BaseModel
 
@@ -20,6 +22,8 @@ from app.services import (
     ai_engine_manager,
     intent_router,
     intent_router_model,
+    master_creation_service,
+    purchase_native_context,
     task_agent_model,
     task_agent_runtime,
     task_agent_service,
@@ -603,6 +607,160 @@ def test_inline_fast_path_skips_arq_enqueue_when_completed_inline(monkeypatch: p
     exec_mock.assert_awaited_once()
     fake_pool.enqueue_job.assert_not_awaited()
     fake_pool.aclose.assert_awaited_once()
+
+
+def test_master_creation_accepts_explicit_item_units_and_still_rejects_missing_unit(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime(2026, 11, 26, 12, 0, 0, tzinfo=timezone.utc)
+    row = SimpleNamespace(
+        id="d" * 32,
+        revision=4,
+        organization_id="org-1",
+        user_id="usr-1",
+        company_id="comp-1",
+        action_id=None,
+        updated_at=now,
+        content={
+            "party_name": "Sharma Traders",
+            "lines": [{"item_name": "laptop", "quantity": 5, "rate": 35000, "unit": ""}],
+        },
+    )
+    principal = SimpleNamespace(organization_id="org-1", user_id="usr-1", session_id="sess-1")
+    company = SimpleNamespace(id="comp-1", name="Philixa Test", identity="ident-1")
+    cfg = SimpleNamespace(test_company=True, company="Philixa Test", version=1)
+    device = SimpleNamespace(id="dev-1", credential_hash="cred-1")
+
+    unit_el = ET.Element("UNIT", NAME="Nos")
+    ledger_el = ET.Element("LEDGER", NAME="Sharma Traders")
+    ET.SubElement(ledger_el, "PARENT").text = "Sundry Creditors"
+    catalog = {"units": [unit_el], "items": [], "ledgers": [ledger_el]}
+
+    added = []
+    events = []
+
+    class _FakePrepDB:
+        async def scalar(self, _stmt):
+            return "comp-1"
+
+        async def get(self, _model, _key):
+            return cfg
+
+        async def scalars(self, _stmt):
+            return SimpleNamespace(all=lambda: [])
+
+        def add(self, obj):
+            added.append(obj)
+
+        async def flush(self):
+            return None
+
+        async def commit(self):
+            return None
+
+    async def _scoped_draft(_db, _p, _id, lock=False):
+        return row
+
+    async def _noop_async(*_args, **_kwargs):
+        return None
+
+    async def _company_for(_db, _p, _cid):
+        return company
+
+    async def _bound_device(_db, _c):
+        return device
+
+    async def _connector_ready(_d):
+        return True
+
+    async def _saved_snapshot(_db, _c):
+        return SimpleNamespace(collected_at=now, catalog={})
+
+    monkeypatch.setattr(master_creation_service.drafts, "scoped_draft", _scoped_draft)
+    monkeypatch.setattr(master_creation_service.drafts, "editable_action", _noop_async)
+    monkeypatch.setattr(master_creation_service.drafts, "company_for", _company_for)
+    monkeypatch.setattr(
+        master_creation_service.drafts,
+        "record_event",
+        lambda _db, _row, _uid, kind, data: events.append((kind, data)),
+    )
+    monkeypatch.setattr(master_creation_service.sync, "bound_device", _bound_device)
+    monkeypatch.setattr(master_creation_service.sync, "saved_snapshot", _saved_snapshot)
+    monkeypatch.setattr(
+        master_creation_service.sync,
+        "config_data",
+        lambda _cfg: {"test_company": True, "company": "Philixa Test"},
+    )
+    monkeypatch.setattr(master_creation_service.sync, "now", lambda: now)
+    monkeypatch.setattr(master_creation_service, "connector_ready", _connector_ready)
+    monkeypatch.setattr(master_creation_service, "deserialize_catalog", lambda _raw: catalog)
+    monkeypatch.setattr(purchase_native_context, "fresh", lambda _dt: True)
+
+    db = _FakePrepDB()
+    with pytest.raises(HTTPException) as missing_exc:
+        asyncio.run(master_creation_service.prepare(db, principal, "d" * 32, create_supplier=False, create_items=True))
+    assert missing_exc.value.status_code == 422
+    assert "Exact item name and unit required" in missing_exc.value.detail
+
+    result = asyncio.run(
+        master_creation_service.prepare(
+            db,
+            principal,
+            "d" * 32,
+            create_supplier=False,
+            create_items=True,
+            item_units={"0": "Nos"},
+        )
+    )
+    assert row.content["lines"][0]["unit"] == "Nos"
+    assert row.revision == 5
+    assert events == [("master_unit_selected", {"units": {"0": "Nos"}})]
+    assert result["preview"]["title"] == "Create missing Tally masters"
+    assert result["preview"]["can_confirm"] is True
+    assert added[0].payload["masters"][0]["kind"] == "STOCKITEM"
+    assert added[0].payload["masters"][0]["name"] == "laptop"
+    assert added[0].payload["masters"][0]["fields"]["BASEUNITS"] == "Nos"
+
+
+def test_inline_fast_path_enqueues_arq_when_inline_times_out_in_running_state(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("PHILIXA_TASK_AGENT_INLINE_FAST_PATH", "1")
+    fake_task = SimpleNamespace(revision=0, status="queued", state={"messages": ["5 laptop"]})
+
+    class _FakeDB:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, _model, _ident):
+            return fake_task
+
+    fake_pool = SimpleNamespace(
+        enqueue_job=AsyncMock(),
+        aclose=AsyncMock(),
+    )
+
+    async def _fake_create_pool(_settings):
+        return fake_pool
+
+    async def _fake_timeout_execute(_ctx, _ident, _rev=None):
+        fake_task.status = "running"
+        raise asyncio.TimeoutError()
+
+    exec_mock = AsyncMock(side_effect=_fake_timeout_execute)
+    monkeypatch.setattr(db_session, "AsyncSessionLocal", lambda: _FakeDB())
+    monkeypatch.setattr(arq.connections, "create_pool", _fake_create_pool)
+    monkeypatch.setattr(task_agent_jobs, "execute_agent_task", exec_mock)
+
+    asyncio.run(task_agent_service.enqueue("t" * 32))
+
+    exec_mock.assert_awaited_once()
+    fake_pool.enqueue_job.assert_awaited_once()
+    fake_pool.aclose.assert_awaited_once()
+
 
 
 

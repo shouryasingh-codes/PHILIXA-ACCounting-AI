@@ -211,6 +211,7 @@ async def state(db,principal,draft_id,prefix=''):
 
     from app.services.task_agent_runtime import format_inr, format_qty, clean_item_name, format_bill_date
     tot_formatted = format_inr(total) if total else ''
+    is_bill_doc = bool(row.document_id or inv_num)
 
     if identity:
         field = identity.get('field') or ''
@@ -225,7 +226,12 @@ async def state(db,principal,draft_id,prefix=''):
             if tot_formatted:
                 meta.append(f"Total: {tot_formatted}")
 
-            header = f"Maine {supplier or 'supplier'} ka bill check kar liya hai:"
+            if is_bill_doc:
+                header = f"Maine {supplier or 'supplier'} ka bill check kar liya hai:"
+            elif supplier and supplier != 'Supplier':
+                header = f"Maine {supplier} ki purchase details check kar li hain:"
+            else:
+                header = "Maine purchase details check kar li hain:"
             if meta:
                 header += f"\n• {'  |  '.join(meta)}"
             message.append(header)
@@ -242,9 +248,14 @@ async def state(db,principal,draft_id,prefix=''):
             if raw_supplier and supplier and raw_supplier.casefold() != supplier.casefold() and supplier != 'Supplier':
                 sup_display = f"{raw_supplier} (Tally me mapped: {supplier})"
             else:
-                sup_display = supplier or 'bill'
+                sup_display = supplier or ('bill' if is_bill_doc else '')
 
-            header_lines = [f"Maine {sup_display} ka bill check kar liya hai:"]
+            if is_bill_doc:
+                header_lines = [f"Maine {sup_display or 'bill'} ka bill check kar liya hai:"]
+            elif sup_display and sup_display != 'Supplier':
+                header_lines = [f"Maine {sup_display} ki purchase details check kar li hain:"]
+            else:
+                header_lines = ["Maine purchase details check kar li hain:"]
             meta = []
             if inv_num:
                 meta.append(f"Invoice: #{inv_num}")
@@ -306,7 +317,7 @@ async def state(db,principal,draft_id,prefix=''):
         else:
             message.append(identity.get('message') or 'Identity detail confirm karein.')
     elif blockers:
-        message.append(f"Bill me ek dikkat hai: {blockers[0]}")
+        message.append(f"{'Bill' if is_bill_doc else 'Purchase details'} me ek dikkat hai: {blockers[0]}")
     elif missing:
         fields={v['field'] for v in issues if v['kind']=='missing'}
         groups=[]
@@ -316,11 +327,12 @@ async def state(db,principal,draft_id,prefix=''):
         if fields & {'invoice_number','entry_date'}:groups.append('bill number/date')
         if 'invoice_total' in fields:groups.append('final total')
         if any(v in fields for v in ('supplier_gstin','place_of_supply','expected_taxes')) or any(v.endswith((':gst_rate',':hsn',':taxable_amount')) for v in fields):groups.append('bill ke tax details')
-        message.append(f"Bill details me bas {', '.join(groups)} confirm karne hain. Kripya check karein.")
+        message.append(f"{'Bill' if is_bill_doc else 'Purchase'} details me bas {', '.join(groups)} confirm karne hain. Kripya check karein.")
     else:
         message.append('Saari details match ho gayi hain. Preview check karke confirm karein taaki Tally me entry post ho sake.')
+    available_units=[name(u) for u in catalog.get('units',[]) if name(u)][:30]
     response={'response':'\n'.join(message),'draft_id':row.id,'gst_purchase_draft':{'id':row.id},
-        'purchase_assistant':{'draft_id':row.id,'revision':revision,'field':identity['field'] if identity else 'message','choices':identity['choices'] if identity else []},
+        'purchase_assistant':{'draft_id':row.id,'revision':revision,'field':identity['field'] if identity else 'message','choices':identity['choices'] if identity else [],'available_units':available_units},
         'proposal':proposal,'issues':issues,'suggestions':context.get('suggestions',[]),'evidence_version':proposal['evidence_version'],
         'purchase_situation':(row.extraction_metadata or {}).get('purchase_situation',{}),
         'purchase_context':{**context,'native_history_status':context.get('history_status',context.get('status')),

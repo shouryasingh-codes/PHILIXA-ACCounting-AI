@@ -9,6 +9,7 @@ from xml.etree import ElementTree as ET
 
 import arq.connections
 from fastapi import HTTPException
+from langgraph.checkpoint.memory import MemorySaver
 import pytest
 from pydantic import BaseModel
 
@@ -23,7 +24,12 @@ from app.services import (
     intent_router,
     intent_router_model,
     master_creation_service,
+    purchase_agent,
+    purchase_checkpoint,
+    purchase_conversation,
+    purchase_memory_service,
     purchase_native_context,
+    repeat_purchase,
     task_agent_model,
     task_agent_runtime,
     task_agent_service,
@@ -762,5 +768,123 @@ def test_inline_fast_path_enqueues_arq_when_inline_times_out_in_running_state(
     fake_pool.aclose.assert_awaited_once()
 
 
+def test_purchase_agent_state_returns_available_units_for_single_and_multi_missing_items(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    assert "name" not in purchase_agent.state.__code__.co_varnames
 
+    now = datetime(2026, 11, 27, 11, 30, 0, tzinfo=timezone.utc)
+    principal = SimpleNamespace(
+        organization_id="org-1",
+        user_id="usr-1",
+        role="admin",
+        session_id="sess-1",
+    )
+    company = SimpleNamespace(id="co-1", name="Philixa Test", identity="co-id")
+
+    ledger_el = ET.Element("LEDGER", NAME="Sharma Traders")
+    ET.SubElement(ledger_el, "PARENT").text = "Sundry Creditors"
+    catalog = {
+        "ledgers": [ledger_el],
+        "items": [],
+        "units": [ET.Element("UNIT", NAME="Nos"), ET.Element("UNIT", NAME="Pcs")],
+        "companies": [],
+        "non_gst": True,
+    }
+
+    current_row = {"row": None}
+
+    class _FakeStateDB:
+        async def get(self, _model, _key):
+            return None
+
+        async def commit(self):
+            return None
+
+    async def _scoped_draft(_db, _p, _id, lock=False):
+        return current_row["row"]
+
+    async def _noop_editable(_db, _row, _rev):
+        return None
+
+    async def _company_for(_db, _p, _cid):
+        return company
+
+    async def _catalog_for(_db, _co):
+        return catalog
+
+    async def _reusable_aliases(_db, _p, _cid):
+        return {}
+
+    async def _prepare(_db, _p, row):
+        return row, catalog, []
+
+    async def _saved_snapshot(_db, _co):
+        return SimpleNamespace(generation="gen-1", collected_at=now)
+
+    monkeypatch.setattr(purchase_agent.drafts, "scoped_draft", _scoped_draft)
+    monkeypatch.setattr(purchase_agent.drafts, "editable_action", _noop_editable)
+    monkeypatch.setattr(purchase_agent.drafts, "company_for", _company_for)
+    monkeypatch.setattr(purchase_memory_service, "catalog_for", _catalog_for)
+    monkeypatch.setattr(purchase_memory_service, "reusable_aliases", _reusable_aliases)
+    monkeypatch.setattr(purchase_conversation, "prepare", _prepare)
+    monkeypatch.setattr(purchase_agent.sync, "saved_snapshot", _saved_snapshot)
+    monkeypatch.setattr(purchase_agent.native, "fresh", lambda _dt: True)
+    monkeypatch.setattr(purchase_checkpoint, "PurchaseSaver", lambda _sf: MemorySaver())
+    monkeypatch.setattr(repeat_purchase, "proposal", lambda _c, _ctx: None)
+
+    db = _FakeStateDB()
+
+    row_single = SimpleNamespace(
+        id="e" * 32,
+        revision=1,
+        organization_id="org-1",
+        user_id="usr-1",
+        company_id="co-1",
+        document_id=None,
+        action_id=None,
+        updated_at=now,
+        extraction_metadata={},
+        content={
+            "party_name": "Sharma Traders",
+            "invoice_number": None,
+            "lines": [
+                {"item_name": "laptop", "quantity": 5, "rate": 35000, "amount": 175000}
+            ],
+        },
+    )
+    current_row["row"] = row_single
+    res_single = asyncio.run(purchase_agent.state(db, principal, row_single.id))
+
+    assert res_single["draft_id"] == row_single.id
+    assert res_single["purchase_assistant"]["available_units"] == ["Nos", "Pcs"]
+    assert "Maine Sharma Traders ki purchase details check kar li hain:" in res_single["response"]
+    assert "ka bill" not in res_single["response"]
+    assert "laptop" in res_single["response"].lower()
+
+    row_multi = SimpleNamespace(
+        id="f" * 32,
+        revision=1,
+        organization_id="org-1",
+        user_id="usr-1",
+        company_id="co-1",
+        document_id=None,
+        action_id=None,
+        updated_at=now,
+        extraction_metadata={},
+        content={
+            "party_name": "Sharma Traders",
+            "invoice_number": None,
+            "lines": [
+                {"item_name": "laptop", "quantity": 5, "rate": 35000, "amount": 175000},
+                {"item_name": "mouse", "quantity": 2, "rate": 500, "amount": 1000},
+            ],
+        },
+    )
+    current_row["row"] = row_multi
+    res_multi = asyncio.run(purchase_agent.state(db, principal, row_multi.id))
+
+    assert res_multi["purchase_assistant"]["available_units"] == ["Nos", "Pcs"]
+    assert "laptop" in res_multi["response"].lower()
+    assert "mouse" in res_multi["response"].lower()
 

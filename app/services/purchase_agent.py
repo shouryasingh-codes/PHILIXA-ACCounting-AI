@@ -277,7 +277,7 @@ async def state(db,principal,draft_id,prefix=''):
                         l = lines[i] if i < len(lines) else {}
                     except (ValueError, IndexError):
                         l = {}
-                    name = clean_item_name(l.get('item_name') or f"Item {idx + 1}")
+                    item_label = clean_item_name(l.get('item_name') or f"Item {idx + 1}")
                     q = l.get('quantity')
                     u = l.get('unit') or ''
                     q_formatted = format_qty(q, u)
@@ -289,7 +289,7 @@ async def state(db,principal,draft_id,prefix=''):
                     if r_formatted:
                         spec.append(f"@ {r_formatted}")
                     spec_str = f" — {' '.join(spec)}" if spec else ""
-                    item_bullets.append(f"  {idx + 1}. {name}{spec_str}")
+                    item_bullets.append(f"  {idx + 1}. {item_label}{spec_str}")
 
                 if len(missing_items) > 6:
                     item_bullets.append(f"  ...aur baaki {len(missing_items) - 6} items.")

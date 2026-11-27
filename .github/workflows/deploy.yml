@@ -80,6 +80,16 @@ jobs:
             cd ~/philixa
             git pull --ff-only origin main
 
+            df -h /
+            sudo docker image prune -f
+            sudo docker builder prune -f --filter "until=24h"
+            AVAIL_KB=$(df --output=avail / | tail -1 | tr -d ' ')
+            if [ "${AVAIL_KB:-0}" -lt 6291456 ]; then
+              sudo docker container prune -f
+              sudo docker builder prune -af
+            fi
+            df -h /
+
             sudo docker compose -f docker-compose.prod.yml build app
             sudo docker compose -f docker-compose.prod.yml up -d
 
@@ -89,3 +99,4 @@ jobs:
             curl --retry 15 --retry-delay 2 --retry-all-errors -sf http://127.0.0.1:8000/health
             echo ""
             sudo docker image prune -f
+            sudo docker builder prune -f --keep-storage=4GB || sudo docker builder prune -f --filter "until=168h" || true

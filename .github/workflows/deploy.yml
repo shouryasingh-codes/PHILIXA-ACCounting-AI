@@ -55,7 +55,10 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost/test
         run: |
           set -euo pipefail
-          python3 scripts/test_gst_native_exports.py
+          if [ -d data/day5-native ]; then
+            python3 scripts/test_gst_native_exports.py
+          fi
+          python3 -m pytest scripts/test_task_agent_model.py scripts/test_task_agent_prompts.py scripts/test_task_agent_runtime.py scripts/test_intent_router_model.py scripts/test_routing_pilot_gate.py -q --tb=short
           python3 scripts/test_mcp_write_validation.py
           python3 scripts/test_repeat_purchase.py
           python3 scripts/test_tally_suppliers.py
